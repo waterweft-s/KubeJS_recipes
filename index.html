@@ -1,0 +1,3901 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KubeJS 可视化合成表生成工具</title>
+<style>
+:root {
+  --bg: #1a1b26;
+  --surface: #24283b;
+  --surface2: #2f334d;
+  --border: #3b4261;
+  --primary: #7aa2f7;
+  --accent: #bb9af7;
+  --success: #9ece6a;
+  --warning: #e0af68;
+  --error: #f7768e;
+  --text: #c0caf5;
+  --muted: #565f89;
+  --code-bg: #16161e;
+  --grid-empty: #1e2030;
+  --grid-filled: #2f334d;
+  --grid-hover: #3d4258;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg); color: var(--text);
+  min-height: 100vh; font-size: 14px;
+  overflow: hidden;
+}
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+/* Top bar */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 20px; background: var(--surface);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.topbar h1 { font-size: 18px; font-weight: 600; color: var(--primary); }
+.topbar .actions { display: flex; gap: 8px; align-items: center; }
+
+/* Storage badge */
+.storage-badge {
+  font-size: 11px; padding: 3px 10px; border-radius: 12px;
+  background: var(--surface2); color: var(--muted); cursor: pointer;
+  transition: all .15s; user-select: none; white-space: nowrap;
+}
+.storage-badge:hover { opacity: .85; }
+.storage-badge.file-mode { background: rgba(158,206,106,.2); color: var(--success); }
+.storage-badge.local-mode { background: rgba(224,175,104,.2); color: var(--warning); }
+
+/* Buttons */
+.btn {
+  padding: 7px 16px; border: 1px solid var(--border);
+  background: var(--surface2); color: var(--text);
+  border-radius: 6px; cursor: pointer; font-size: 13px;
+  transition: all .15s; white-space: nowrap;
+}
+.btn:hover { background: var(--border); }
+.btn-primary { background: var(--primary); color: #1a1b26; border-color: var(--primary); font-weight: 600; }
+.btn-primary:hover { opacity: .9; }
+.btn-accent { background: var(--accent); color: #1a1b26; border-color: var(--accent); font-weight: 600; }
+.btn-danger { color: var(--error); border-color: var(--error); }
+.btn-danger:hover { background: rgba(247,118,142,.15); }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-icon { padding: 4px 8px; font-size: 12px; }
+
+/* Main layout - 3 columns */
+.main { display: flex; flex: 1; gap: 1px; background: var(--border); overflow: hidden; }
+
+/* Left: Item Browser */
+.item-panel {
+  flex: 0 0 260px; background: var(--bg); display: flex; flex-direction: column;
+}
+.item-panel-header { padding: 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.item-panel-header .title-row {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+}
+.item-panel-header .title-row span { font-size: 14px; font-weight: 600; color: var(--primary); }
+.item-panel-header .title-row .btn-group { display: flex; gap: 4px; }
+.search-box {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px;
+  outline: none; margin-bottom: 8px;
+}
+.search-box:focus { border-color: var(--primary); }
+.item-list { flex: 1; overflow-y: auto; padding: 8px; }
+
+/* Category header */
+.category-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 6px; cursor: pointer; user-select: none;
+  border-radius: 4px; margin-top: 6px; font-size: 13px;
+  font-weight: 600; color: var(--accent); transition: background .12s;
+}
+.category-header:hover { background: var(--surface); }
+.category-header:first-child { margin-top: 2px; }
+.cat-toggle { font-size: 10px; width: 12px; text-align: center; flex-shrink: 0; }
+.cat-name { flex: 1; }
+.cat-count {
+  font-size: 11px; color: var(--muted); font-weight: 400;
+  background: var(--surface2); padding: 1px 8px; border-radius: 10px;
+}
+
+/* Item card */
+.item-card {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-radius: 6px; cursor: pointer; transition: background .12s;
+  position: relative; margin-bottom: 2px;
+}
+.item-card:hover { background: var(--surface); }
+.item-card.dragging { opacity: .4; cursor: grabbing; }
+.item-card .icon {
+  width: 32px; height: 32px; border-radius: 4px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; overflow: hidden;
+  background: var(--surface2); border: 1px solid var(--border);
+  pointer-events: none;
+}
+.item-card .icon img { width: 100%; height: 100%; object-fit: cover; }
+.item-card .info { flex: 1; min-width: 0; }
+.item-card .name { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-card .id-text { font-size: 10px; color: var(--muted); font-family: 'Consolas', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item-card .delete-item {
+  display: none; position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 18px; height: 18px; background: var(--error); color: #fff;
+  border: none; border-radius: 50%; cursor: pointer; font-size: 11px;
+  align-items: center; justify-content: center; line-height: 1;
+}
+.item-card:hover .delete-item { display: flex; }
+.item-card .delete-item:hover { opacity: .8; }
+
+/* Center: Recipe Editor */
+.editor-panel {
+  flex: 1; background: var(--bg); padding: 16px 20px; overflow-y: auto;
+  min-width: 0;
+}
+
+/* Right: Code + Recipes */
+.right-panel {
+  flex: 0 0 380px; background: var(--bg); padding: 16px 20px; overflow-y: auto;
+}
+
+/* Recipe type tabs */
+.recipe-types {
+  display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px;
+}
+.recipe-types .type-group {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+}
+.recipe-types .group-label {
+  font-size: 10px; color: var(--muted); font-weight: 700;
+  letter-spacing: 0.5px; padding-right: 4px; user-select: none;
+  flex-shrink: 0;
+}
+.recipe-types button {
+  padding: 6px 12px; border: none; background: var(--surface);
+  color: var(--muted); cursor: pointer; border-radius: 6px;
+  font-size: 12px; transition: all .15s; white-space: nowrap;
+}
+.recipe-types button:hover { color: var(--text); background: var(--surface2); }
+.recipe-types button.active { background: var(--primary); color: #1a1b26; font-weight: 600; }
+
+/* Multi-output list (Create milling/crushing/splashing) */
+.multi-output-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.multi-output-item { display: flex; gap: 8px; align-items: stretch; }
+.multi-output-item .mo-field { display: flex; flex-direction: column; flex-shrink: 0; }
+.multi-output-item .mo-field:first-child { flex: 1; }
+.multi-output-item .mo-field label { font-size: 12px; color: var(--muted); margin-bottom: 4px; text-align: center; }
+.multi-output-item .mo-field:first-child label { text-align: left; }
+.multi-output-item .mo-field .drop-target { position: relative; }
+.multi-output-item .mo-field .drop-target input {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 13px;
+  font-family: 'Consolas', monospace; outline: none;
+}
+.multi-output-item .mo-field .drop-target input:focus { border-color: var(--primary); }
+.multi-output-item .mo-field .drop-target.has-icon input { padding-left: 38px; }
+.multi-output-item .mo-field .drop-target .drop-icon {
+  position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+  width: 22px; height: 22px; border-radius: 3px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; pointer-events: none;
+}
+.multi-output-item .mo-field .drop-target .drop-icon img { width: 100%; height: 100%; object-fit: cover; }
+.multi-output-item .mo-count, .multi-output-item .mo-chance {
+  width: 64px !important; text-align: center;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); padding: 8px 4px; border-radius: 6px; font-size: 13px;
+  font-family: 'Consolas', monospace; outline: none;
+}
+.multi-output-item .mo-count:focus, .multi-output-item .mo-chance:focus { border-color: var(--primary); }
+
+/* Section */
+.section { margin-bottom: 16px; }
+.section-title {
+  font-size: 12px; color: var(--muted); margin-bottom: 8px;
+  text-transform: uppercase; letter-spacing: .5px; font-weight: 600;
+}
+.section-title .hint { font-size: 11px; text-transform: none; color: var(--muted); font-weight: 400; }
+
+/* Crafting grid */
+.crafting-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+  width: 228px; margin: 0 auto 12px;
+}
+.grid-cell {
+  width: 72px; height: 72px; background: var(--grid-empty);
+  border: 2px dashed var(--border); border-radius: 4px;
+  position: relative; overflow: hidden; transition: all .15s;
+}
+.grid-cell:hover { border-color: var(--primary); }
+.grid-cell.drag-over { border-color: var(--success); border-style: solid; background: var(--grid-hover); }
+.grid-cell.filled { background: var(--grid-filled); border: 2px solid var(--accent); border-style: solid; cursor: grab; }
+.grid-cell.filled:active { cursor: grabbing; }
+.grid-cell.dragging { opacity: .4; }
+.grid-cell .cell-icon {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.grid-cell .cell-icon img { width: 48px; height: 48px; object-fit: cover; }
+.grid-cell .cell-icon .placeholder { font-size: 20px; font-weight: 700; opacity: .5; }
+.grid-cell .cell-text {
+  position: absolute; bottom: 2px; left: 2px; right: 2px;
+  font-size: 8px; font-family: 'Consolas', monospace; text-align: center;
+  color: var(--text); background: rgba(0,0,0,.6); border-radius: 2px;
+  padding: 1px 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none;
+}
+.grid-cell .key-badge {
+  position: absolute; top: 2px; left: 4px; font-size: 14px;
+  font-weight: 700; color: var(--warning); pointer-events: none; z-index: 2;
+}
+.grid-cell .clear-btn {
+  position: absolute; top: 2px; right: 2px; width: 16px; height: 16px;
+  background: var(--error); color: #fff; border: none; border-radius: 50%;
+  cursor: pointer; font-size: 10px; display: none;
+  align-items: center; justify-content: center; line-height: 1; z-index: 2;
+}
+.grid-cell.filled .clear-btn { display: flex; }
+
+/* Drop target input */
+.drop-target { position: relative; }
+.drop-target.drag-over { border-color: var(--success) !important; background: var(--grid-hover) !important; }
+.drop-target .drop-icon {
+  position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+  width: 22px; height: 22px; border-radius: 3px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; pointer-events: none;
+}
+.drop-target .drop-icon img { width: 100%; height: 100%; object-fit: cover; }
+.drop-target.has-icon input { padding-left: 38px; }
+.drop-target .input-clear {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 18px; height: 18px; background: var(--surface2); color: var(--muted);
+  border: none; border-radius: 50%; cursor: pointer; font-size: 11px;
+  display: none; align-items: center; justify-content: center; line-height: 1;
+  z-index: 2; transition: all .12s;
+}
+.drop-target .input-clear:hover { background: var(--error); color: #fff; }
+.drop-target.has-value .input-clear { display: flex; }
+
+/* Pattern preview */
+.pattern-preview {
+  background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px; margin-bottom: 12px;
+  font-family: 'Consolas', monospace; font-size: 12px;
+}
+.pattern-preview .pattern-line { color: var(--success); margin: 2px 0; }
+.pattern-preview .key-line { color: var(--accent); margin: 2px 0; }
+.pattern-preview .empty { color: var(--muted); }
+
+/* Shapeless items */
+.shapeless-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.shapeless-item { display: flex; gap: 8px; align-items: center; }
+.shapeless-item .drop-target { flex: 1; position: relative; }
+.shapeless-item .drop-target input {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 13px;
+  font-family: 'Consolas', monospace; outline: none;
+}
+.shapeless-item .drop-target input:focus { border-color: var(--primary); }
+.shapeless-item .item-icon-small {
+  width: 22px; height: 22px; border-radius: 3px; flex-shrink: 0;
+  overflow: hidden; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700;
+}
+.shapeless-item .item-icon-small img { width: 100%; height: 100%; object-fit: cover; }
+
+/* Input fields */
+.field { margin-bottom: 12px; }
+.field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.field input, .field select {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 13px;
+  font-family: 'Consolas', monospace; outline: none;
+}
+.field input:focus, .field select:focus { border-color: var(--primary); }
+.field input::placeholder { color: var(--muted); }
+.field-row { display: flex; gap: 12px; }
+.field-row .field { flex: 1; }
+
+/* Code output */
+.code-section { margin-bottom: 20px; }
+.code-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+}
+.code-header span { font-size: 13px; color: var(--muted); font-weight: 600; }
+.code-actions { display: flex; gap: 6px; }
+.code-block {
+  background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px; font-family: 'Consolas', monospace;
+  font-size: 12px; line-height: 1.6; overflow-x: auto;
+  min-height: 60px; white-space: pre-wrap; word-break: break-all;
+}
+.code-block .str { color: #9ece6a; }
+.code-block .fn { color: #7aa2f7; }
+.code-block .num { color: #ff9e64; }
+.code-block .com { color: #565f89; font-style: italic; }
+.code-block .empty { color: var(--muted); }
+
+/* Recipe list */
+.recipe-list-section { margin-bottom: 20px; }
+.recipe-list { display: flex; flex-direction: column; gap: 6px; }
+.recipe-card {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px 12px; transition: all .15s;
+}
+.recipe-card:hover { border-color: var(--primary); }
+.recipe-card .info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.recipe-card .type-badge {
+  display: inline-block; padding: 1px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 600; width: fit-content;
+}
+.type-shaped { background: rgba(122,162,247,.2); color: var(--primary); }
+.type-shapeless { background: rgba(187,169,247,.2); color: var(--accent); }
+.type-smelting { background: rgba(224,175,104,.2); color: var(--warning); }
+.type-stonecutting { background: rgba(158,206,106,.2); color: var(--success); }
+.type-smithing { background: rgba(247,118,142,.2); color: var(--error); }
+.type-create-milling { background: rgba(224,175,104,.2); color: var(--warning); }
+.type-create-crushing { background: rgba(247,118,142,.2); color: var(--error); }
+.type-create-pressing { background: rgba(122,162,247,.2); color: var(--primary); }
+.type-create-compacting { background: rgba(187,169,247,.2); color: var(--accent); }
+.type-create-mixing { background: rgba(187,169,247,.2); color: var(--accent); }
+.type-create-haunting { background: rgba(86,95,137,.3); color: var(--muted); }
+.type-create-splashing { background: rgba(122,162,247,.2); color: var(--primary); }
+.type-create-cutting { background: rgba(158,206,106,.2); color: var(--success); }
+.type-create-sandpaper { background: rgba(224,175,104,.2); color: var(--warning); }
+.type-create-deploying { background: rgba(187,169,247,.2); color: var(--accent); }
+.type-create-mechanical { background: rgba(122,162,247,.2); color: var(--primary); }
+.type-create-filling { background: rgba(122,162,247,.2); color: var(--primary); }
+.type-create-emptying { background: rgba(158,206,106,.2); color: var(--success); }
+.recipe-card .output-text { font-size: 12px; font-family: 'Consolas', monospace; }
+.recipe-card .actions { display: flex; gap: 4px; flex-shrink: 0; }
+.empty-list { text-align: center; color: var(--muted); padding: 20px; font-size: 13px; }
+
+/* Smelting options */
+.smelting-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+/* Smithing */
+.smithing-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+
+/* Modal */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.6);
+  display: none; align-items: center; justify-content: center; z-index: 999;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 24px; width: 420px; max-width: 90vw;
+  max-height: 80vh; overflow-y: auto;
+}
+.modal h2 { font-size: 16px; color: var(--primary); margin-bottom: 16px; }
+.modal .field { margin-bottom: 14px; }
+.modal .icon-preview {
+  width: 48px; height: 48px; border-radius: 6px; border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 700; overflow: hidden; margin-top: 8px;
+  background: var(--surface2);
+}
+.modal .icon-preview img { width: 100%; height: 100%; object-fit: cover; }
+.modal .icon-row { display: flex; align-items: flex-start; gap: 12px; transition: all .15s; }
+.modal .icon-row.drag-over {
+  outline: 2px dashed var(--success); outline-offset: 4px;
+  border-radius: 8px; background: rgba(158,206,106,.08); padding: 4px; margin: -4px;
+}
+.modal .icon-row .icon-left { flex: 1; }
+.modal .icon-drop-hint { font-size: 10px; color: var(--muted); margin-top: 4px; }
+.modal .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+.modal .batch-area { margin-top: 12px; }
+.modal .batch-area textarea {
+  width: 100%; height: 120px; background: var(--code-bg); border: 1px solid var(--border);
+  color: var(--text); border-radius: 6px; padding: 10px; font-size: 12px;
+  font-family: 'Consolas', monospace; outline: none; resize: vertical;
+}
+.modal .batch-area textarea:focus { border-color: var(--primary); }
+.modal .tab-row { display: flex; gap: 2px; margin-bottom: 16px; background: var(--bg); border-radius: 6px; padding: 3px; }
+.modal .tab-row button {
+  flex: 1; padding: 6px; border: none; background: transparent;
+  color: var(--muted); cursor: pointer; border-radius: 4px; font-size: 12px;
+}
+.modal .tab-row button.active { background: var(--primary); color: #1a1b26; font-weight: 600; }
+
+/* Category management */
+.cat-mgmt-list { margin-bottom: 16px; }
+.cat-mgmt-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: var(--surface2); border-radius: 6px;
+  margin-bottom: 6px; transition: all .15s;
+}
+.cat-mgmt-item:hover { border: 1px solid var(--border); }
+.cat-mgmt-item .cat-mgmt-name { font-weight: 600; font-size: 14px; }
+.cat-mgmt-item .cat-mgmt-name.locked { color: var(--muted); }
+.cat-mgmt-item .cat-mgmt-count { font-size: 11px; color: var(--muted); margin-left: 8px; }
+.cat-mgmt-item .cat-mgmt-actions { display: flex; gap: 4px; }
+.cat-mgmt-item.editing .cat-mgmt-name { display: none; }
+.cat-mgmt-item.editing .cat-mgmt-edit-input { display: block; }
+.cat-mgmt-edit-input {
+  display: none; flex: 1; background: var(--bg); border: 1px solid var(--primary);
+  color: var(--text); padding: 4px 8px; border-radius: 4px; font-size: 14px;
+  outline: none;
+}
+
+/* Data management modal */
+.data-status {
+  background: var(--surface2); border-radius: 8px; padding: 14px;
+  margin-bottom: 16px;
+}
+.status-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+}
+.status-row:last-child { margin-bottom: 0; }
+.status-label { font-size: 12px; color: var(--muted); min-width: 70px; }
+.status-value { font-size: 13px; color: var(--text); font-weight: 500; }
+.status-value.file-mode { color: var(--success); }
+.status-value.local-mode { color: var(--warning); }
+.data-actions {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;
+}
+.data-actions .btn { text-align: center; }
+
+/* Export/Import sections */
+.data-section {
+  background: var(--surface2); border-radius: 8px; padding: 14px;
+  margin-bottom: 12px;
+}
+.data-section-title {
+  font-size: 13px; font-weight: 600; color: var(--accent);
+  margin-bottom: 10px;
+}
+.data-section-row {
+  display: flex; gap: 8px; align-items: center; margin-bottom: 8px;
+}
+.data-section-row:last-child { margin-bottom: 0; }
+.data-section select {
+  flex: 1; background: var(--bg); border: 1px solid var(--border);
+  color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 13px;
+  outline: none;
+}
+.data-section select:focus { border-color: var(--primary); }
+.data-section .btn { flex-shrink: 0; }
+.data-hint {
+  font-size: 11px; color: var(--muted); line-height: 1.8;
+  background: var(--code-bg); border-radius: 6px; padding: 10px 14px;
+}
+.data-hint p { margin: 0; }
+
+/* Context menu */
+.ctx-menu {
+  position: fixed; z-index: 2000; min-width: 160px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 0; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  display: none;
+}
+.ctx-menu.show { display: block; }
+.ctx-menu-item {
+  padding: 8px 16px; font-size: 13px; cursor: pointer;
+  color: var(--text); transition: background .12s;
+}
+.ctx-menu-item:hover { background: var(--surface2); }
+.ctx-menu-item.danger { color: var(--error); }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 24px; right: 24px;
+  padding: 12px 20px; border-radius: 8px; font-size: 13px;
+  opacity: 0; transform: translateY(20px); transition: all .3s;
+  z-index: 1000; font-weight: 500;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast-success { background: var(--success); color: #1a1b26; }
+.toast-error { background: var(--error); color: #fff; }
+.toast-info { background: var(--primary); color: #1a1b26; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* Empty item list */
+.empty-item-list { text-align: center; color: var(--muted); padding: 20px 8px; font-size: 12px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <h1>KubeJS 可视化合成表生成工具</h1>
+    <div class="actions">
+      <span class="storage-badge local-mode" id="storageBadge" title="点击管理数据存储">本地</span>
+      <button class="btn btn-sm" id="dataMgmt">数据管理</button>
+      <button class="btn btn-sm" id="clearCurrent">清空当前</button>
+      <button class="btn btn-sm btn-danger" id="clearAll">清空全部</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- Left: Item Browser -->
+    <div class="item-panel">
+      <div class="item-panel-header">
+        <div class="title-row">
+          <span>物品大全</span>
+          <div class="btn-group">
+            <button class="btn btn-sm" id="openCategoryMgr">分类</button>
+            <button class="btn btn-sm btn-accent" id="openAddItem">+ 添加</button>
+          </div>
+        </div>
+        <input class="search-box" id="itemSearch" placeholder="搜索名称/ID/拼音..." autocomplete="off">
+      </div>
+      <div class="item-list" id="itemList">
+        <div class="empty-item-list">点击 "+ 添加" 按钮添加物品<br>或从右侧拖入物品</div>
+      </div>
+    </div>
+
+    <!-- Center: Recipe Editor -->
+    <div class="editor-panel">
+      <div class="recipe-types">
+        <div class="type-group">
+          <span class="group-label">原版</span>
+          <button data-type="shaped" class="active">有序合成</button>
+          <button data-type="shapeless">无序合成</button>
+          <button data-type="smelting">熔炼</button>
+          <button data-type="stonecutting">切石</button>
+          <button data-type="smithing">锻造</button>
+        </div>
+        <div class="type-group">
+          <span class="group-label">机械动力</span>
+          <button data-type="create-milling">石磨</button>
+          <button data-type="create-crushing">粉碎轮</button>
+          <button data-type="create-pressing">压片</button>
+          <button data-type="create-compacting">压块</button>
+          <button data-type="create-mixing">混合</button>
+          <button data-type="create-haunting">缠魂</button>
+          <button data-type="create-splashing">洗涤</button>
+          <button data-type="create-cutting">切割</button>
+          <button data-type="create-sandpaper">砂纸打磨</button>
+          <button data-type="create-deploying">机械手</button>
+          <button data-type="create-mechanical">动力合成</button>
+          <button data-type="create-filling">注液</button>
+          <button data-type="create-emptying">分液池</button>
+        </div>
+      </div>
+
+      <div id="editor-shaped" class="editor-section">
+        <div class="section">
+          <div class="section-title" id="gridSectionTitle">合成网格 <span class="hint">- 从左侧拖入物品，网格内可拖拽移动/交换</span></div>
+          <div id="mechGridControls" style="display:none; margin-bottom: 8px;">
+            <div class="field-row" style="gap:8px; align-items:flex-end;">
+              <div class="field" style="flex:0 0 auto; margin-bottom:0;">
+                <label>行数</label>
+                <input id="mechGridRows" type="number" value="3" min="1" max="9" style="width:60px; text-align:center;">
+              </div>
+              <div class="field" style="flex:0 0 auto; margin-bottom:0;">
+                <label>列数</label>
+                <input id="mechGridCols" type="number" value="3" min="1" max="9" style="width:60px; text-align:center;">
+              </div>
+              <div class="field" style="flex:0 0 auto; margin-bottom:0;">
+                <button class="btn btn-sm" id="mechGridApply">应用</button>
+              </div>
+            </div>
+          </div>
+          <div class="crafting-grid" id="craftingGrid"></div>
+        </div>
+        <div class="section">
+          <div class="section-title">配方预览</div>
+          <div class="pattern-preview" id="patternPreview">
+            <div class="empty">在网格中放入物品以生成配方...</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="editor-shapeless" class="editor-section" style="display:none">
+        <div class="section">
+          <div class="section-title">输入物品 <span class="hint">- 可从左侧拖入</span></div>
+          <div class="shapeless-list" id="shapelessList"></div>
+          <button class="btn btn-sm" id="addShapelessItem">+ 添加物品</button>
+        </div>
+      </div>
+
+      <div id="editor-smelting" class="editor-section" style="display:none">
+        <div class="section">
+          <div class="field">
+            <label>熔炼类型</label>
+            <select id="smeltingType">
+              <option value="smelting">熔炉 (Smelting)</option>
+              <option value="smoking">烟熏炉 (Smoking)</option>
+              <option value="blasting">高炉 (Blasting)</option>
+              <option value="campfireCooking">营火 (Campfire)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>输入物品 <span style="color:var(--muted);font-size:11px">- 可拖入</span></label>
+            <div class="drop-target" id="smeltingInputDrop">
+              <span class="drop-icon" id="smeltingInputIcon"></span>
+              <input id="smeltingInput" placeholder="minecraft:iron_ore" autocomplete="off">
+            </div>
+          </div>
+          <div class="smelting-options">
+            <div class="field">
+              <label>经验值 (XP)</label>
+              <input id="smeltingXP" type="number" value="0" step="0.1" min="0">
+            </div>
+            <div class="field">
+              <label>烧制时间 (Ticks)</label>
+              <input id="smeltingTime" type="number" value="200" min="1">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="editor-stonecutting" class="editor-section" style="display:none">
+        <div class="section">
+          <div class="field">
+            <label>输入物品 <span style="color:var(--muted);font-size:11px">- 可拖入</span></label>
+            <div class="drop-target" id="stonecutterInputDrop">
+              <span class="drop-icon" id="stonecutterInputIcon"></span>
+              <input id="stonecutterInput" placeholder="minecraft:stone" autocomplete="off">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="editor-smithing" class="editor-section" style="display:none">
+        <div class="section">
+          <div class="section-title">锻造材料 <span class="hint">- 均可拖入</span></div>
+          <div class="smithing-grid">
+            <div class="field">
+              <label>模板</label>
+              <div class="drop-target" id="smithingTemplateDrop">
+                <span class="drop-icon" id="smithingTemplateIcon"></span>
+                <input id="smithingTemplate" placeholder="minecraft:netherite_upgrade_smithing_template" autocomplete="off">
+              </div>
+            </div>
+            <div class="field">
+              <label>基础物品</label>
+              <div class="drop-target" id="smithingBaseDrop">
+                <span class="drop-icon" id="smithingBaseIcon"></span>
+                <input id="smithingBase" placeholder="minecraft:diamond_sword" autocomplete="off">
+              </div>
+            </div>
+            <div class="field">
+              <label>附加材料</label>
+              <div class="drop-target" id="smithingAdditionDrop">
+                <span class="drop-icon" id="smithingAdditionIcon"></span>
+                <input id="smithingAddition" placeholder="minecraft:netherite_ingot" autocomplete="off">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Create: Multi-output (milling, crushing, splashing, cutting) -->
+      <div id="editor-create-multi-output" class="editor-section" style="display:none">
+        <div class="section">
+          <div class="field">
+            <label>输入物品 <span style="color:var(--muted);font-size:11px">- 可拖入</span></label>
+            <div class="drop-target" id="createMoInputDrop">
+              <span class="drop-icon" id="createMoInputIcon"></span>
+              <input id="createMoInput" placeholder="minecraft:iron_ore" autocomplete="off">
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-title">输出物品列表 <span class="hint">- 支持多输出带概率</span></div>
+          <div class="multi-output-list" id="createMoOutputList"></div>
+          <button class="btn btn-sm" id="addCreateMoOutput">+ 添加输出</button>
+        </div>
+        <div class="section">
+          <div class="field">
+            <label>处理时间 (Ticks, 可选, 0=默认)</label>
+            <input id="createMoTime" type="number" value="0" min="0">
+          </div>
+        </div>
+      </div>
+
+      <!-- Create: Simple (pressing, haunting, cutting, sandpaper) -->
+      <div id="editor-create-simple" class="editor-section" style="display:none">
+        <div class="section">
+          <div class="field">
+            <label>输入物品 <span style="color:var(--muted);font-size:11px">- 可拖入</span></label>
+            <div class="drop-target" id="createSimpleInputDrop">
+              <span class="drop-icon" id="createSimpleInputIcon"></span>
+              <input id="createSimpleInput" placeholder="minecraft:iron_ingot" autocomplete="off">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Create: Multi-input (compacting, mixing) -->
+      <div id="editor-create-multi-input" class="editor-section" style="display:none">
+        <div class="section">
+          <div class="section-title">输入物品 <span class="hint">- 可从左侧拖入</span></div>
+          <div class="shapeless-list" id="createMiInputList"></div>
+          <button class="btn btn-sm" id="addCreateMiInput">+ 添加物品</button>
+        </div>
+        <div class="section" id="createCompactingFluidInput" style="display:none">
+          <div class="section-title">流体输入 (可选)</div>
+          <div class="field-row">
+            <div class="field" style="flex:2; margin-bottom:0;">
+              <label>流体 ID</label>
+              <input id="createCompactingFluid" placeholder="minecraft:lava" autocomplete="off">
+            </div>
+            <div class="field" style="flex:1; margin-bottom:0;">
+              <label>流体量 (mB)</label>
+              <input id="createCompactingFluidAmount" type="number" value="1000" min="1">
+            </div>
+          </div>
+        </div>
+        <div class="section" id="createCompactingFluidOutput" style="display:none">
+          <div class="section-title">流体输出 (可选)</div>
+          <div class="field-row">
+            <div class="field" style="flex:2; margin-bottom:0;">
+              <label>输出流体 ID</label>
+              <input id="createCompactingOutFluid" placeholder="minecraft:lava" autocomplete="off">
+            </div>
+            <div class="field" style="flex:1; margin-bottom:0;">
+              <label>流体量 (mB)</label>
+              <input id="createCompactingOutFluidAmount" type="number" value="1000" min="1">
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="field">
+            <label>热量要求</label>
+            <select id="createHeat">
+              <option value="none">无加热</option>
+              <option value="heated">加热 (Heated)</option>
+              <option value="superheated">超级加热 (Superheated)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Create: Deploying -->
+      <div id="editor-create-deploying" class="editor-section" style="display:none">
+        <div class="section">
+          <div class="section-title">机械手材料 <span class="hint">- 均可拖入</span></div>
+          <div class="smithing-grid">
+            <div class="field">
+              <label>输入物品</label>
+              <div class="drop-target" id="createDeployInputDrop">
+                <span class="drop-icon" id="createDeployInputIcon"></span>
+                <input id="createDeployInput" placeholder="minecraft:iron_ingot" autocomplete="off">
+              </div>
+            </div>
+            <div class="field">
+              <label>手持物品</label>
+              <div class="drop-target" id="createDeployHeldDrop">
+                <span class="drop-icon" id="createDeployHeldIcon"></span>
+                <input id="createDeployHeld" placeholder="minecraft:honeycomb" autocomplete="off">
+              </div>
+            </div>
+            <div class="field"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Create: Filling -->
+      <div id="editor-create-filling" class="editor-section" style="display:none">
+        <div class="section">
+          <div class="field">
+            <label>输入物品 <span style="color:var(--muted);font-size:11px">- 可拖入</span></label>
+            <div class="drop-target" id="createFillItemDrop">
+              <span class="drop-icon" id="createFillItemIcon"></span>
+              <input id="createFillItem" placeholder="minecraft:glass_bottle" autocomplete="off">
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-title">流体输入</div>
+          <div class="field-row">
+            <div class="field" style="flex:2">
+              <label>流体 ID</label>
+              <input id="createFillFluid" placeholder="minecraft:water" autocomplete="off">
+            </div>
+            <div class="field" style="flex:1">
+              <label>流体量 (mB)</label>
+              <input id="createFillAmount" type="number" value="1000" min="1">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Create: Emptying -->
+      <div id="editor-create-emptying" class="editor-section" style="display:none">
+        <div class="section">
+          <div class="field">
+            <label>输入物品 <span style="color:var(--muted);font-size:11px">- 可拖入</span></label>
+            <div class="drop-target" id="createEmptyInputDrop">
+              <span class="drop-icon" id="createEmptyInputIcon"></span>
+              <input id="createEmptyInput" placeholder="minecraft:water_bucket" autocomplete="off">
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-title">输出流体</div>
+          <div class="field-row">
+            <div class="field" style="flex:2">
+              <label>流体 ID</label>
+              <input id="createEmptyFluid" placeholder="minecraft:water" autocomplete="off">
+            </div>
+            <div class="field" style="flex:1">
+              <label>流体量 (mB)</label>
+              <input id="createEmptyAmount" type="number" value="1000" min="1">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section" id="outputSection">
+        <div class="section-title" id="outputSectionTitle">输出设置 <span class="hint">- 可拖入</span></div>
+        <div class="field-row" style="align-items:flex-end;">
+          <div class="field" style="flex:3; margin-bottom:0;">
+            <label id="outputItemLabel">输出物品</label>
+            <div class="drop-target" id="outputItemDrop">
+              <span class="drop-icon" id="outputItemIcon"></span>
+              <input id="outputItem" placeholder="minecraft:diamond" autocomplete="off">
+            </div>
+          </div>
+          <div class="field" style="flex:0 0 80px; margin-bottom:0;">
+            <label>数量</label>
+            <input id="outputCount" type="number" value="1" min="1" max="64">
+          </div>
+          <div class="field" style="flex:0 0 auto; margin-bottom:0;">
+            <button class="btn btn-sm" id="clearOutputBtn" title="清空输出物品和数量">清空</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">高级选项 (可选)</div>
+        <div class="field">
+          <label>配方 ID</label>
+          <input id="recipeId" placeholder="kubejs:my_recipe" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>配方组</label>
+          <input id="recipeGroup" placeholder="kubejs:my_group" autocomplete="off">
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="saveRecipe" style="width:100%;padding:10px;">保存配方到列表</button>
+    </div>
+
+    <!-- Right: Code + Recipe List -->
+    <div class="right-panel">
+      <div class="code-section">
+        <div class="code-header">
+          <span>生成的 KubeJS 代码</span>
+          <div class="code-actions">
+            <button class="btn btn-sm" id="copyCode">复制代码</button>
+          </div>
+        </div>
+        <div class="code-block" id="codeOutput"><span class="empty">// 编辑配方以生成代码...</span></div>
+      </div>
+
+      <div class="recipe-list-section">
+        <div class="code-header">
+          <span>已保存配方 (<span id="recipeCount">0</span>)</span>
+          <div class="code-actions">
+            <button class="btn btn-sm btn-primary" id="exportAll">导出全部</button>
+            <button class="btn btn-sm" id="downloadAll">下载 .js</button>
+          </div>
+        </div>
+        <div class="recipe-list" id="recipeList">
+          <div class="empty-list">暂无已保存的配方</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Item Modal -->
+<div class="modal-overlay" id="itemModal">
+  <div class="modal">
+    <h2 id="modalTitle">添加物品</h2>
+    <div class="tab-row">
+      <button class="active" data-tab="single">单个添加</button>
+      <button data-tab="batch">批量导入</button>
+    </div>
+
+    <div id="modalSingle">
+      <div class="field">
+        <label>注册名 (Registry ID)</label>
+        <input id="newItemId" placeholder="minecraft:iron_ingot" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>中文名</label>
+        <input id="newItemName" placeholder="铁锭" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>分类</label>
+        <select id="newItemCategory"></select>
+      </div>
+      <div class="field">
+        <div class="icon-row" id="iconDropZone">
+          <div class="icon-left">
+            <label>图标图片 (可选)</label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input id="newItemIconUrl" placeholder="图片URL" autocomplete="off" style="flex:1">
+              <button class="btn btn-sm" id="uploadIconBtn">上传</button>
+            </div>
+            <div class="icon-drop-hint">支持拖入图片文件 / 粘贴URL / 点击上传</div>
+            <input type="file" id="iconFileInput" accept="image/*" style="display:none">
+          </div>
+          <div class="icon-preview" id="iconPreview" style="background:var(--surface2)"></div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="closeModal">取消</button>
+        <button class="btn btn-primary" id="confirmAddItem">添加</button>
+      </div>
+    </div>
+
+    <div id="modalBatch" style="display:none">
+      <div class="field">
+        <label>分类</label>
+        <select id="batchCategory"></select>
+      </div>
+      <div class="batch-area">
+        <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:6px">
+          每行一个物品，格式: <code style="color:var(--accent)">注册名 | 中文名</code> 或 <code style="color:var(--accent)">注册名</code>
+        </label>
+        <textarea id="batchInput" placeholder="minecraft:iron_ingot | 铁锭&#10;minecraft:gold_ingot | 金锭&#10;minecraft:diamond | 钻石"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="closeModal2">取消</button>
+        <button class="btn btn-primary" id="confirmBatchAdd">批量添加</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Category Management Modal -->
+<div class="modal-overlay" id="categoryModal">
+  <div class="modal" style="width:380px">
+    <h2>分类管理</h2>
+    <div class="cat-mgmt-list" id="categoryMgmtList"></div>
+    <div class="field">
+      <label>新建分类</label>
+      <div style="display:flex;gap:8px">
+        <input id="newCategoryName" placeholder="分类名称" autocomplete="off" style="flex:1">
+        <button class="btn btn-primary btn-sm" id="addCategoryBtn">新建</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="closeCategoryModal">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Data Management Modal -->
+<div class="modal-overlay" id="dataModal">
+  <div class="modal" style="width:520px">
+    <h2>数据管理</h2>
+    <div class="data-status">
+      <div class="status-row">
+        <span class="status-label">存储模式:</span>
+        <span class="status-value local-mode" id="storageModeText">本地存储 (localStorage)</span>
+      </div>
+      <div class="status-row" id="folderInfoRow" style="display:none">
+        <span class="status-label">文件夹:</span>
+        <span class="status-value file-mode" id="folderNameText"></span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">自定义物品:</span>
+        <span class="status-value" id="customItemCount">0</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">自定义分类:</span>
+        <span class="status-value" id="customCatCount">0</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">已保存配方:</span>
+        <span class="status-value" id="recipeCountText">0</span>
+      </div>
+    </div>
+    <div class="data-actions">
+      <button class="btn" id="bindFolderBtn">绑定文件夹</button>
+      <button class="btn" id="unbindFolderBtn" style="display:none">解除绑定</button>
+    </div>
+
+    <div class="data-section">
+      <div class="data-section-title">导出</div>
+      <div class="data-section-row">
+        <select id="exportCategorySelect"></select>
+        <button class="btn btn-sm" id="exportCategoryBtn">导出分类</button>
+      </div>
+      <div class="data-section-row">
+        <select id="exportRecipeSelect"></select>
+        <button class="btn btn-sm" id="exportRecipeBtn">导出配方</button>
+      </div>
+      <div class="data-section-row">
+        <span style="flex:1;font-size:12px;color:var(--muted);">导出全部数据（所有分类、物品、配方）</span>
+        <button class="btn btn-sm" id="exportAllBtn">导出全部</button>
+      </div>
+    </div>
+
+    <div class="data-section">
+      <div class="data-section-title">导入</div>
+      <div class="data-section-row">
+        <span style="flex:1;font-size:12px;color:var(--muted);">选择 JSON 文件导入（自动识别格式：分类/配方/全部）</span>
+        <button class="btn btn-sm" id="importFileBtn">选择文件</button>
+      </div>
+      <input type="file" id="importFileInput" accept=".json" style="display:none">
+    </div>
+
+    <div class="data-hint">
+      <p>· 绑定文件夹后，数据按以下结构自动保存：</p>
+      <p>&nbsp;&nbsp;categories.json — 分类列表</p>
+      <p>&nbsp;&nbsp;items/[分类名].json — 每个分类一个文件</p>
+      <p>&nbsp;&nbsp;recipes/[产物注册名].json — 每个产物一个文件</p>
+      <p>· 导出分类：导出选定分类及其所有物品，可发给他人导入</p>
+      <p>· 导出配方：导出选定产物的所有配方</p>
+      <p>· 导入时自动识别文件格式，分类/配方为合并模式，全部导入为覆盖模式</p>
+      <p>· 默认物品数据内置在 HTML 中，分享文件时不会包含您的自定义数据</p>
+    </div>
+    <div style="margin-top:12px">
+      <button class="btn btn-danger" id="resetDataBtn" style="width:100%">重置所有自定义数据</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="closeDataModal">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Category Context Menu -->
+<div class="ctx-menu" id="catCtxMenu">
+  <div class="ctx-menu-item" id="ctxAddItem">添加物品到此分类</div>
+  <div class="ctx-menu-item" id="ctxRenameCat">重命名分类</div>
+  <div class="ctx-menu-item danger" id="ctxDeleteCat">删除分类</div>
+</div>
+
+<script src="pinyin-pro.min.js"></script>
+<script>
+// ============================================================
+//  DEFAULT DATA (hardcoded in HTML, shared with others)
+// ============================================================
+const RAW_DEFAULT_ITEMS = [
+  { id: 'minecraft:stick', name: '木棍' },
+  { id: 'minecraft:planks', name: '木板' },
+  { id: 'minecraft:crafting_table', name: '工作台' },
+  { id: 'minecraft:furnace', name: '熔炉' },
+  { id: 'minecraft:chest', name: '箱子' },
+  { id: 'minecraft:torch', name: '火把' },
+  { id: 'minecraft:iron_ingot', name: '铁锭' },
+  { id: 'minecraft:gold_ingot', name: '金锭' },
+  { id: 'minecraft:diamond', name: '钻石' },
+  { id: 'minecraft:emerald', name: '绿宝石' },
+  { id: 'minecraft:coal', name: '煤炭' },
+  { id: 'minecraft:charcoal', name: '木炭' },
+  { id: 'minecraft:redstone', name: '红石粉' },
+  { id: 'minecraft:lapis_lazuli', name: '青金石' },
+  { id: 'minecraft:quartz', name: '下界石英' },
+  { id: 'minecraft:netherite_ingot', name: '下界合金锭' },
+  { id: 'minecraft:netherite_scrap', name: '下界合金碎片' },
+  { id: 'minecraft:iron_ore', name: '铁矿石' },
+  { id: 'minecraft:gold_ore', name: '金矿石' },
+  { id: 'minecraft:diamond_ore', name: '钻石矿石' },
+  { id: 'minecraft:coal_ore', name: '煤矿石' },
+  { id: 'minecraft:copper_ore', name: '铜矿石' },
+  { id: 'minecraft:copper_ingot', name: '铜锭' },
+  { id: 'minecraft:iron_block', name: '铁块' },
+  { id: 'minecraft:gold_block', name: '金块' },
+  { id: 'minecraft:diamond_block', name: '钻石块' },
+  { id: 'minecraft:netherite_block', name: '下界合金块' },
+  { id: 'minecraft:bow', name: '弓' },
+  { id: 'minecraft:crossbow', name: '弩' },
+  { id: 'minecraft:trident', name: '三叉戟' },
+  { id: 'minecraft:arrow', name: '箭' },
+  { id: 'minecraft:spectral_arrow', name: '光灵箭' },
+  { id: 'minecraft:tipped_arrow', name: '药箭' },
+  { id: 'minecraft:diamond_sword', name: '钻石剑' },
+  { id: 'minecraft:diamond_pickaxe', name: '钻石镐' },
+  { id: 'minecraft:diamond_axe', name: '钻石斧' },
+  { id: 'minecraft:diamond_shovel', name: '钻石锹' },
+  { id: 'minecraft:diamond_helmet', name: '钻石头盔' },
+  { id: 'minecraft:diamond_chestplate', name: '钻石胸甲' },
+  { id: 'minecraft:diamond_leggings', name: '钻石护腿' },
+  { id: 'minecraft:diamond_boots', name: '钻石靴子' },
+  { id: 'minecraft:netherite_sword', name: '下界合金剑' },
+  { id: 'minecraft:netherite_pickaxe', name: '下界合金镐' },
+  { id: 'minecraft:netherite_axe', name: '下界合金斧' },
+  { id: 'minecraft:netherite_shovel', name: '下界合金锹' },
+  { id: 'minecraft:netherite_helmet', name: '下界合金头盔' },
+  { id: 'minecraft:netherite_chestplate', name: '下界合金胸甲' },
+  { id: 'minecraft:netherite_leggings', name: '下界合金护腿' },
+  { id: 'minecraft:netherite_boots', name: '下界合金靴子' },
+  { id: 'minecraft:iron_sword', name: '铁剑' },
+  { id: 'minecraft:iron_pickaxe', name: '铁镐' },
+  { id: 'minecraft:iron_axe', name: '铁斧' },
+  { id: 'minecraft:iron_shovel', name: '铁锹' },
+  { id: 'minecraft:wooden_sword', name: '木剑' },
+  { id: 'minecraft:wooden_pickaxe', name: '木镐' },
+  { id: 'minecraft:wooden_axe', name: '木斧' },
+  { id: 'minecraft:wooden_shovel', name: '木锹' },
+  { id: 'minecraft:stone_sword', name: '石剑' },
+  { id: 'minecraft:stone_pickaxe', name: '石镐' },
+  { id: 'minecraft:stone_axe', name: '石斧' },
+  { id: 'minecraft:stone_shovel', name: '石锹' },
+  { id: 'minecraft:golden_sword', name: '金剑' },
+  { id: 'minecraft:golden_pickaxe', name: '金镐' },
+  { id: 'minecraft:golden_axe', name: '金斧' },
+  { id: 'minecraft:golden_shovel', name: '金锹' },
+  { id: 'minecraft:leather', name: '皮革' },
+  { id: 'minecraft:string', name: '线' },
+  { id: 'minecraft:feather', name: '羽毛' },
+  { id: 'minecraft:flint', name: '燧石' },
+  { id: 'minecraft:gunpowder', name: '火药' },
+  { id: 'minecraft:glowstone_dust', name: '荧石粉' },
+  { id: 'minecraft:blaze_rod', name: '烈焰棒' },
+  { id: 'minecraft:blaze_powder', name: '烈焰粉' },
+  { id: 'minecraft:ender_pearl', name: '末影珍珠' },
+  { id: 'minecraft:ender_eye', name: '末影之眼' },
+  { id: 'minecraft:nether_star', name: '下界之星' },
+  { id: 'minecraft:wither_skeleton_skull', name: '凋灵骷髅头' },
+  { id: 'minecraft:dragon_egg', name: '龙蛋' },
+  { id: 'minecraft:elytra', name: '鞘翅' },
+  { id: 'minecraft:shield', name: '盾牌' },
+  { id: 'minecraft:fishing_rod', name: '钓鱼竿' },
+  { id: 'minecraft:shears', name: '剪刀' },
+  { id: 'minecraft:flint_and_steel', name: '打火石' },
+  { id: 'minecraft:bucket', name: '桶' },
+  { id: 'minecraft:water_bucket', name: '水桶' },
+  { id: 'minecraft:lava_bucket', name: '熔岩桶' },
+  { id: 'minecraft:milk_bucket', name: '奶桶' },
+  { id: 'minecraft:compass', name: '指南针' },
+  { id: 'minecraft:clock', name: '时钟' },
+  { id: 'minecraft:map', name: '地图' },
+  { id: 'minecraft:spyglass', name: '望远镜' },
+  { id: 'minecraft:book', name: '书' },
+  { id: 'minecraft:enchanted_book', name: '附魔书' },
+  { id: 'minecraft:writable_book', name: '书与笔' },
+  { id: 'minecraft:written_book', name: '成书' },
+  { id: 'minecraft:experience_bottle', name: '附魔之瓶' },
+  { id: 'minecraft:totem_of_undying', name: '不死图腾' },
+  { id: 'minecraft:shulker_box', name: '潜影盒' },
+  { id: 'minecraft:bedrock', name: '基岩' },
+  { id: 'minecraft:obsidian', name: '黑曜石' },
+  { id: 'minecraft:crying_obsidian', name: '哭泣的黑曜石' },
+  { id: 'minecraft:netherrack', name: '下界岩' },
+  { id: 'minecraft:end_stone', name: '末地石' },
+  { id: 'minecraft:sand', name: '沙子' },
+  { id: 'minecraft:gravel', name: '沙砾' },
+  { id: 'minecraft:clay_ball', name: '粘土球' },
+  { id: 'minecraft:brick', name: '红砖' },
+  { id: 'minecraft:nether_brick', name: '下界砖' },
+  { id: 'minecraft:paper', name: '纸' },
+  { id: 'minecraft:sugar', name: '糖' },
+  { id: 'minecraft:wheat', name: '小麦' },
+  { id: 'minecraft:bread', name: '面包' },
+  { id: 'minecraft:apple', name: '苹果' },
+  { id: 'minecraft:golden_apple', name: '金苹果' },
+  { id: 'minecraft:enchanted_golden_apple', name: '附魔金苹果' },
+  { id: 'minecraft:carrot', name: '胡萝卜' },
+  { id: 'minecraft:potato', name: '马铃薯' },
+  { id: 'minecraft:baked_potato', name: '烤马铃薯' },
+  { id: 'minecraft:beetroot', name: '甜菜根' },
+  { id: 'minecraft:egg', name: '鸡蛋' },
+  { id: 'minecraft:slime_ball', name: '粘液球' },
+  { id: 'minecraft:magma_cream', name: '岩浆膏' },
+  { id: 'minecraft:bone', name: '骨头' },
+  { id: 'minecraft:bone_meal', name: '骨粉' },
+  { id: 'minecraft:spider_eye', name: '蜘蛛眼' },
+  { id: 'minecraft:rotten_flesh', name: '腐肉' },
+  { id: 'minecraft:ghast_tear', name: '恶魂之泪' },
+  { id: 'minecraft:phantom_membrane', name: '幻翼膜' },
+  { id: 'minecraft:prismarine_shard', name: '海晶碎片' },
+  { id: 'minecraft:prismarine_crystals', name: '海晶砂粒' },
+  { id: 'minecraft:sea_lantern', name: '海晶灯' },
+  { id: 'minecraft:conduit', name: '潮涌核心' },
+  { id: 'minecraft:heart_of_the_sea', name: '海洋之心' },
+  { id: 'minecraft:nautilus_shell', name: '鹦鹉螺壳' },
+  { id: 'minecraft:scute', name: '鳞甲' },
+  { id: 'minecraft:turtle_helmet', name: '海龟壳' },
+  { id: 'minecraft:echo_shard', name: '回响碎片' },
+  { id: 'minecraft:recovery_compass', name: '追溯指针' },
+  { id: 'minecraft:disc_fragment_5', name: '唱片碎片5' },
+  { id: 'minecraft:goat_horn', name: '山羊角' },
+  { id: 'minecraft:amethyst_shard', name: '紫水晶碎片' },
+  { id: 'minecraft:raw_iron', name: '粗铁' },
+  { id: 'minecraft:raw_gold', name: '粗金' },
+  { id: 'minecraft:raw_copper', name: '粗铜' },
+  { id: 'minecraft:glow_ink_sac', name: '荧光墨囊' },
+  { id: 'minecraft:ink_sac', name: '墨囊' },
+  { id: 'minecraft:honeycomb', name: '蜜脾' },
+  { id: 'minecraft:honey_bottle', name: '蜂蜜瓶' },
+  { id: 'minecraft:netherite_upgrade_smithing_template', name: '下界合金升级锻造模板' },
+  { id: 'minecraft:smithing_table', name: '锻造台' },
+  { id: 'minecraft:grindstone', name: '砂轮' },
+  { id: 'minecraft:stonecutter', name: '切石机' },
+  { id: 'minecraft:loom', name: '织布机' },
+  { id: 'minecraft:anvil', name: '铁砧' },
+  { id: 'minecraft:enchanting_table', name: '附魔台' },
+  { id: 'minecraft:brewing_stand', name: '酿造台' },
+  { id: 'minecraft:cauldron', name: '炼药锅' },
+  { id: 'minecraft:beacon', name: '信标' },
+  { id: 'minecraft:end_portal_frame', name: '末地传送门框架' },
+  { id: 'minecraft:respawn_anchor', name: '重生锚' },
+  { id: 'minecraft:lodestone', name: '磁石' },
+  { id: 'minecraft:lightning_rod', name: '避雷针' },
+  { id: 'minecraft:bell', name: '钟' },
+  { id: 'minecraft:pointed_dripstone', name: '滴水石锥' },
+  { id: 'minecraft:powder_snow_bucket', name: '细雪桶' },
+  { id: 'minecraft:axolotl_bucket', name: '美西螈桶' },
+  { id: 'minecraft:tropical_fish_bucket', name: '热带鱼桶' },
+  { id: 'minecraft:pufferfish_bucket', name: '河豚桶' },
+  { id: 'minecraft:salmon_bucket', name: '鲑鱼桶' },
+  { id: 'minecraft:cod_bucket', name: '鳕鱼桶' },
+  { id: 'minecraft:tadpole_bucket', name: '蝌蚪桶' },
+];
+const DEFAULT_ITEMS = RAW_DEFAULT_ITEMS.map(i => ({ ...i, icon: '', category: '原版' }));
+const DEFAULT_CATEGORY = '原版';
+
+// ============================================================
+//  STATE
+// ============================================================
+let currentType = 'shaped';
+let shapedGrid = ['','','','','','','','',''];
+let mechGrid = ['','','','','','','','',''];
+let mechGridSize = { rows: 3, cols: 3 };
+let shapelessItems = [];
+// Create mod state
+let createMultiOutputs = [{ item: '', count: 1, chance: 1 }];
+let createMultiInputs = [''];
+let dragData = null;
+let gridDragSource = null;
+let editingItemId = null;
+let collapsedCategories = new Set(); // UI state, stays in localStorage
+
+// User data (stored in external files / localStorage, NOT in HTML)
+let userData = {
+  items: [],             // User-added items + edited copies of default items
+  deletedDefaults: [],   // IDs of default items the user has deleted
+  categories: [],        // Custom categories (not "原版")
+  recipes: []            // Saved recipes
+};
+
+// File System Access API
+let dataDirHandle = null;
+let pendingHandle = null;
+
+// Cached merged item DB
+let itemDBCache = null;
+
+// ============================================================
+//  INDEXEDDB (for storing directory handle)
+// ============================================================
+function openIDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('kubejs_recipes_data', 1);
+    req.onupgradeneeded = e => {
+      e.target.result.createObjectStore('handles');
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = e => reject(e);
+  });
+}
+
+async function storeHandle(handle) {
+  try {
+    const db = await openIDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('handles', 'readwrite');
+      tx.objectStore('handles').put(handle, 'dataDir');
+      tx.oncomplete = resolve;
+      tx.onerror = reject;
+    });
+  } catch(e) { console.error('storeHandle failed:', e); }
+}
+
+async function getStoredHandle() {
+  try {
+    const db = await openIDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('handles', 'readonly');
+      const req = tx.objectStore('handles').get('dataDir');
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = reject;
+    });
+  } catch(e) { return null; }
+}
+
+async function clearStoredHandle() {
+  try {
+    const db = await openIDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('handles', 'readwrite');
+      tx.objectStore('handles').delete('dataDir');
+      tx.oncomplete = resolve;
+      tx.onerror = reject;
+    });
+  } catch(e) {}
+}
+
+// ============================================================
+//  DERIVED DATA (merge defaults + user data)
+// ============================================================
+function rebuildItemDB() {
+  // Start with deep copy of defaults
+  const db = DEFAULT_ITEMS.map(i => ({ ...i }));
+  // Remove deleted defaults
+  const deletedSet = new Set(userData.deletedDefaults);
+  let result = db.filter(i => !deletedSet.has(i.id));
+  // Apply user items (override matching or add new)
+  for (const userItem of userData.items) {
+    const idx = result.findIndex(i => i.id === userItem.id);
+    if (idx >= 0) {
+      result[idx] = { ...userItem };
+    } else {
+      result.push({ ...userItem });
+    }
+  }
+  itemDBCache = result;
+  return result;
+}
+
+function getItemDB() {
+  if (!itemDBCache) rebuildItemDB();
+  return itemDBCache;
+}
+
+function getCategories() {
+  return [DEFAULT_CATEGORY, ...userData.categories];
+}
+
+function findItem(id) {
+  return getItemDB().find(i => i.id === id);
+}
+
+// ============================================================
+//  STORAGE: localStorage (always)
+// ============================================================
+const LS_KEY = 'kubejs_user_data_v1';
+const LS_COLLAPSED = 'kubejs_collapsed_cats';
+
+function saveUserDataToLocal() {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(userData));
+  } catch(e) {
+    showToast('保存失败：存储空间不足（图片可能太大）', 'error');
+  }
+}
+
+function loadUserDataFromLocal() {
+  try {
+    const data = localStorage.getItem(LS_KEY);
+    if (data) {
+      const parsed = JSON.parse(data);
+      userData.items = parsed.items || [];
+      userData.deletedDefaults = parsed.deletedDefaults || [];
+      userData.categories = parsed.categories || [];
+      userData.recipes = parsed.recipes || [];
+      return true;
+    }
+  } catch(e) { console.error('loadUserDataFromLocal failed:', e); }
+  return false;
+}
+
+// ============================================================
+//  STORAGE: File System Access API
+// ============================================================
+function fsApiAvailable() {
+  return 'showDirectoryPicker' in window;
+}
+
+async function initDataStorage() {
+  if (!fsApiAvailable()) {
+    updateStorageBadge('local');
+    return false;
+  }
+  try {
+    const handle = await getStoredHandle();
+    if (handle) {
+      const perm = await handle.queryPermission({ mode: 'readwrite' });
+      if (perm === 'granted') {
+        dataDirHandle = handle;
+        updateStorageBadge('file');
+        return true;
+      }
+      // Handle exists but permission not auto-granted
+      pendingHandle = handle;
+      updateStorageBadge('local');
+      return false;
+    }
+  } catch(e) { console.error('initDataStorage failed:', e); }
+  updateStorageBadge('local');
+  return false;
+}
+
+async function bindDataFolder() {
+  if (!fsApiAvailable()) {
+    showToast('当前浏览器不支持文件夹选择，请使用 Chrome 或 Edge', 'error');
+    return;
+  }
+  try {
+    // If we have a pending handle, try to re-request permission first
+    if (pendingHandle) {
+      const perm = await pendingHandle.requestPermission({ mode: 'readwrite' });
+      if (perm === 'granted') {
+        dataDirHandle = pendingHandle;
+        pendingHandle = null;
+        await storeHandle(dataDirHandle);
+        await saveUserDataToFiles();
+        updateStorageBadge('file');
+        updateDataStatus();
+        showToast('已重新绑定文件夹: ' + dataDirHandle.name, 'success');
+        return;
+      }
+    }
+    // Show directory picker
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    dataDirHandle = handle;
+    pendingHandle = null;
+    await storeHandle(handle);
+    // Try to load existing data from folder first
+    const loaded = await loadUserDataFromFiles();
+    if (loaded) {
+      rebuildItemDB();
+      renderItemList();
+      renderRecipeList();
+      renderCategoryMgmt();
+      populateCategorySelects();
+      updateAll();
+      showToast('已绑定并从文件夹加载数据: ' + handle.name, 'success');
+    } else {
+      // No existing data, save current data to folder
+      await saveUserDataToFiles();
+      showToast('已绑定文件夹: ' + handle.name, 'success');
+    }
+    updateStorageBadge('file');
+    updateDataStatus();
+  } catch(e) {
+    if (e.name !== 'AbortError') {
+      showToast('绑定失败: ' + e.message, 'error');
+    }
+  }
+}
+
+async function unbindDataFolder() {
+  dataDirHandle = null;
+  pendingHandle = null;
+  await clearStoredHandle();
+  saveUserDataToLocal(); // Ensure data is in localStorage
+  updateStorageBadge('local');
+  updateDataStatus();
+  showToast('已解除文件夹绑定，数据仍保存在本地', 'info');
+}
+
+let saveFileTimer = null;
+function saveUserDataToFilesDebounced() {
+  if (!dataDirHandle) return;
+  if (saveFileTimer) clearTimeout(saveFileTimer);
+  saveFileTimer = setTimeout(() => {
+    saveUserDataToFiles();
+    saveFileTimer = null;
+  }, 500);
+}
+
+async function saveUserDataToFiles() {
+  if (!dataDirHandle) return;
+  try {
+    // 1. categories.json (unchanged path)
+    const catFile = await dataDirHandle.getFileHandle('categories.json', { create: true });
+    const catWritable = await catFile.createWritable();
+    await catWritable.write(JSON.stringify(userData.categories, null, 2));
+    await catWritable.close();
+
+    // 2. items/ directory — one file per category
+    const itemsDir = await dataDirHandle.getDirectoryHandle('items', { create: true });
+
+    // Clean up old files first
+    for await (const [name, handle] of itemsDir.entries()) {
+      if (handle.kind === 'file') {
+        try { await itemsDir.removeEntry(name); } catch(e) {}
+      }
+    }
+
+    // Group items by category
+    const itemsByCat = {};
+    for (const item of userData.items) {
+      const cat = item.category || DEFAULT_CATEGORY;
+      if (!itemsByCat[cat]) itemsByCat[cat] = [];
+      itemsByCat[cat].push(item);
+    }
+
+    // Write one file per category (including empty ones)
+    const allCats = getCategories();
+    for (const cat of allCats) {
+      const fileName = sanitizeFileName(cat) + '.json';
+      const fh = await itemsDir.getFileHandle(fileName, { create: true });
+      const w = await fh.createWritable();
+      await w.write(JSON.stringify(itemsByCat[cat] || [], null, 2));
+      await w.close();
+    }
+
+    // Write deleted defaults
+    const delFh = await itemsDir.getFileHandle('_deleted.json', { create: true });
+    const delW = await delFh.createWritable();
+    await delW.write(JSON.stringify(userData.deletedDefaults, null, 2));
+    await delW.close();
+
+    // 3. recipes/ directory — one file per output item
+    const recDir = await dataDirHandle.getDirectoryHandle('recipes', { create: true });
+
+    // Clean up old files first
+    for await (const [name, handle] of recDir.entries()) {
+      if (handle.kind === 'file') {
+        try { await recDir.removeEntry(name); } catch(e) {}
+      }
+    }
+
+    // Group recipes by output
+    const recByOutput = {};
+    for (const r of userData.recipes) {
+      const key = sanitizeFileName(r.output || 'unknown');
+      if (!recByOutput[key]) recByOutput[key] = [];
+      recByOutput[key].push(r);
+    }
+
+    // Write recipe files
+    for (const [key, recs] of Object.entries(recByOutput)) {
+      const fh = await recDir.getFileHandle(key + '.json', { create: true });
+      const w = await fh.createWritable();
+      await w.write(JSON.stringify(recs, null, 2));
+      await w.close();
+    }
+  } catch(e) {
+    console.error('Save to files failed:', e);
+  }
+}
+
+function sanitizeFileName(name) {
+  return String(name).replace(/[:<>"/\\|?*\x00-\x1f]/g, '_').trim() || 'unknown';
+}
+
+async function loadUserDataFromFiles() {
+  if (!dataDirHandle) return false;
+  let loaded = false;
+  try {
+    // categories.json
+    try {
+      const catFile = await dataDirHandle.getFileHandle('categories.json');
+      const catText = await (await catFile.getFile()).text();
+      userData.categories = JSON.parse(catText);
+      loaded = true;
+    } catch(e) {}
+
+    // items/ directory
+    try {
+      const itemsDir = await dataDirHandle.getDirectoryHandle('items');
+      userData.items = [];
+      userData.deletedDefaults = [];
+      for await (const [name, handle] of itemsDir.entries()) {
+        if (handle.kind !== 'file' || !name.endsWith('.json')) continue;
+        try {
+          const text = await (await handle.getFile()).text();
+          const data = JSON.parse(text);
+          if (name === '_deleted.json') {
+            userData.deletedDefaults = Array.isArray(data) ? data : [];
+          } else if (Array.isArray(data)) {
+            userData.items.push(...data);
+          }
+        } catch(e) { console.error('Error loading items file:', name, e); }
+      }
+      loaded = true;
+    } catch(e) {}
+
+    // recipes/ directory
+    try {
+      const recDir = await dataDirHandle.getDirectoryHandle('recipes');
+      userData.recipes = [];
+      for await (const [name, handle] of recDir.entries()) {
+        if (handle.kind !== 'file' || !name.endsWith('.json')) continue;
+        try {
+          const text = await (await handle.getFile()).text();
+          const data = JSON.parse(text);
+          if (Array.isArray(data)) {
+            userData.recipes.push(...data);
+          }
+        } catch(e) { console.error('Error loading recipe file:', name, e); }
+      }
+      loaded = true;
+    } catch(e) {}
+
+    // Also try old-format files for migration
+    if (!loaded) {
+      try {
+        const oldItemsFile = await dataDirHandle.getFileHandle('items.json');
+        const itemsText = await (await oldItemsFile.getFile()).text();
+        const itemsData = JSON.parse(itemsText);
+        if (itemsData.items) userData.items = itemsData.items;
+        if (itemsData.deletedDefaults) userData.deletedDefaults = itemsData.deletedDefaults;
+        loaded = true;
+      } catch(e) {}
+      try {
+        const oldRecFile = await dataDirHandle.getFileHandle('recipes.json');
+        const recText = await (await oldRecFile.getFile()).text();
+        userData.recipes = JSON.parse(recText);
+        loaded = true;
+      } catch(e) {}
+    }
+  } catch(e) {
+    console.error('Load from files failed:', e);
+  }
+  return loaded;
+}
+
+// ============================================================
+//  UNIFIED SAVE
+// ============================================================
+function saveUserData() {
+  saveUserDataToLocal();
+  saveUserDataToFilesDebounced();
+  updateDataStatus();
+}
+
+// ============================================================
+//  MIGRATION (from old localStorage format)
+// ============================================================
+function migrateOldData() {
+  if (localStorage.getItem(LS_KEY)) return; // Already migrated
+  const oldItemDB = localStorage.getItem('kubejs_item_db');
+  const oldCategories = localStorage.getItem('kubejs_categories');
+  const oldRecipes = localStorage.getItem('kubejs_recipes');
+  if (!oldItemDB && !oldCategories && !oldRecipes) return;
+
+  try {
+    const oldItems = oldItemDB ? JSON.parse(oldItemDB) : [];
+    const oldCats = oldCategories ? JSON.parse(oldCategories) : ['原版'];
+    const oldRecs = oldRecipes ? JSON.parse(oldRecipes) : [];
+
+    const newUserData = { items: [], deletedDefaults: [], categories: [], recipes: oldRecs };
+    newUserData.categories = oldCats.filter(c => c !== '原版');
+
+    const defaultMap = new Map(DEFAULT_ITEMS.map(i => [i.id, i]));
+    for (const item of oldItems) {
+      const defaultItem = defaultMap.get(item.id);
+      if (defaultItem) {
+        // Check if modified
+        const isModified = (item.name || '') !== defaultItem.name ||
+                           (item.icon || '') !== (defaultItem.icon || '') ||
+                           (item.category || '原版') !== '原版';
+        if (isModified) {
+          newUserData.items.push({
+            id: item.id,
+            name: item.name || defaultItem.name,
+            icon: item.icon || '',
+            category: item.category || '原版'
+          });
+        }
+      } else {
+        // Custom item
+        newUserData.items.push({
+          id: item.id,
+          name: item.name || item.id,
+          icon: item.icon || '',
+          category: item.category || '原版'
+        });
+      }
+    }
+
+    // Detect deleted defaults
+    const oldIds = new Set(oldItems.map(i => i.id));
+    for (const defaultItem of DEFAULT_ITEMS) {
+      if (!oldIds.has(defaultItem.id)) {
+        newUserData.deletedDefaults.push(defaultItem.id);
+      }
+    }
+
+    userData = newUserData;
+    saveUserDataToLocal();
+
+    // Clear old keys
+    localStorage.removeItem('kubejs_item_db');
+    localStorage.removeItem('kubejs_categories');
+    localStorage.removeItem('kubejs_recipes');
+    console.log('Migrated old data to new format');
+  } catch(e) {
+    console.error('Migration failed:', e);
+  }
+}
+
+// ============================================================
+//  EXPORT / IMPORT (granular: category, recipe, or full)
+// ============================================================
+function populateExportSelects() {
+  // Category select
+  const catSel = document.getElementById('exportCategorySelect');
+  if (catSel) {
+    catSel.innerHTML = '';
+    const cats = getCategories();
+    for (const cat of cats) {
+      const db = getItemDB();
+      const count = db.filter(i => i.category === cat).length;
+      const opt = document.createElement('option');
+      opt.value = cat;
+      opt.textContent = `${cat} (${count} 个物品)`;
+      catSel.appendChild(opt);
+    }
+  }
+  // Recipe select
+  const recSel = document.getElementById('exportRecipeSelect');
+  if (recSel) {
+    recSel.innerHTML = '';
+    // Group recipes by output
+    const outputs = {};
+    for (const r of userData.recipes) {
+      const key = r.output || 'unknown';
+      if (!outputs[key]) outputs[key] = 0;
+      outputs[key]++;
+    }
+    const keys = Object.keys(outputs).sort();
+    if (keys.length === 0) {
+      const opt = document.createElement('option');
+      opt.textContent = '（暂无已保存配方）';
+      recSel.appendChild(opt);
+    } else {
+      for (const key of keys) {
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = `${key} (${outputs[key]} 个配方)`;
+        recSel.appendChild(opt);
+      }
+    }
+  }
+}
+
+function exportCategory(catName) {
+  const db = getItemDB();
+  const items = db.filter(i => i.category === catName).map(i => ({ ...i }));
+  const data = {
+    type: 'category',
+    category: catName,
+    items: items,
+    exportedAt: new Date().toISOString()
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'category_' + sanitizeFileName(catName) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast(`已导出分类"${catName}"（${items.length} 个物品）`, 'success');
+}
+
+function exportRecipes(outputKey) {
+  let recipes, fileName;
+  if (outputKey === '__ALL__') {
+    recipes = userData.recipes;
+    fileName = 'all_recipes.json';
+  } else {
+    recipes = userData.recipes.filter(r => (r.output || 'unknown') === outputKey);
+    fileName = 'recipes_' + sanitizeFileName(outputKey) + '.json';
+  }
+  const data = {
+    type: 'recipes',
+    recipes: recipes,
+    exportedAt: new Date().toISOString()
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast(`已导出 ${recipes.length} 个配方`, 'success');
+}
+
+function exportAllData() {
+  const data = {
+    type: 'full',
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    items: userData.items,
+    deletedDefaults: userData.deletedDefaults,
+    categories: userData.categories,
+    recipes: userData.recipes
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'kubejs_user_data.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('全部数据已导出', 'success');
+}
+
+function importUserData(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      const type = data.type || (data.items || data.recipes ? 'full' : 'unknown');
+
+      if (type === 'category') {
+        // Merge category + items
+        const cat = data.category;
+        if (!cat) { showToast('导入失败：缺少分类名', 'error'); return; }
+        // Add category if not exists
+        if (cat !== DEFAULT_CATEGORY && !userData.categories.includes(cat)) {
+          userData.categories.push(cat);
+        }
+        // Merge items: skip duplicates
+        let added = 0, skipped = 0;
+        const existingIds = new Set(getItemDB().map(i => i.id));
+        for (const item of (data.items || [])) {
+          if (existingIds.has(item.id)) {
+            // Update existing item
+            const userIdx = userData.items.findIndex(i => i.id === item.id);
+            if (userIdx >= 0) {
+              userData.items[userIdx] = { ...item, category: cat };
+            } else {
+              // It's a default item being overridden
+              userData.items.push({ ...item, category: cat });
+            }
+            skipped++;
+          } else {
+            // Remove from deleted defaults if present
+            const delIdx = userData.deletedDefaults.indexOf(item.id);
+            if (delIdx >= 0) userData.deletedDefaults.splice(delIdx, 1);
+            userData.items.push({ ...item, category: cat });
+            added++;
+          }
+        }
+        saveUserData();
+        rebuildItemDB();
+        renderItemList();
+        renderCategoryMgmt();
+        populateCategorySelects();
+        updateAll();
+        populateExportSelects();
+        updateDataStatus();
+        showToast(`分类"${cat}"已导入（新增 ${added}，更新 ${skipped} 个物品）`, 'success');
+
+      } else if (type === 'recipes') {
+        // Merge recipes: skip exact duplicates
+        let added = 0, skipped = 0;
+        for (const r of (data.recipes || [])) {
+          const isDup = userData.recipes.some(existing =>
+            existing.output === r.output && existing.type === r.type && existing.code === r.code
+          );
+          if (isDup) { skipped++; continue; }
+          userData.recipes.push(r);
+          added++;
+        }
+        saveUserData();
+        renderRecipeList();
+        populateExportSelects();
+        updateDataStatus();
+        showToast(`配方已导入（新增 ${added}，跳过 ${skipped} 个重复）`, 'success');
+
+      } else if (type === 'full') {
+        if (!confirm('导入全部数据将覆盖当前所有自定义数据，是否继续？')) return;
+        if (data.items) userData.items = data.items;
+        if (data.deletedDefaults) userData.deletedDefaults = data.deletedDefaults;
+        if (data.categories) userData.categories = data.categories;
+        if (data.recipes) userData.recipes = data.recipes;
+        saveUserData();
+        rebuildItemDB();
+        renderItemList();
+        renderRecipeList();
+        renderCategoryMgmt();
+        populateCategorySelects();
+        updateAll();
+        populateExportSelects();
+        updateDataStatus();
+        showToast('全部数据已导入', 'success');
+
+      } else {
+        showToast('导入失败：无法识别的文件格式', 'error');
+      }
+    } catch(e) {
+      showToast('导入失败：' + e.message, 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function resetUserData() {
+  if (!confirm('确定要重置所有自定义数据吗？\n这将删除所有自定义物品、分类和已保存的配方，恢复到默认状态。')) return;
+  if (!confirm('再次确认：此操作不可撤销！所有自定义数据将被永久删除！')) return;
+  userData = { items: [], deletedDefaults: [], categories: [], recipes: [] };
+  collapsedCategories.clear();
+  saveUserData();
+  saveCollapsedCategories();
+  rebuildItemDB();
+  renderItemList();
+  renderRecipeList();
+  renderCategoryMgmt();
+  populateCategorySelects();
+  updateAll();
+  showToast('数据已重置为默认状态', 'info');
+}
+
+// ============================================================
+//  UI: Storage badge & data status
+// ============================================================
+function updateStorageBadge(mode) {
+  const badge = document.getElementById('storageBadge');
+  if (mode === 'file') {
+    badge.textContent = '文件夹';
+    badge.className = 'storage-badge file-mode';
+  } else {
+    badge.textContent = '本地';
+    badge.className = 'storage-badge local-mode';
+  }
+}
+
+function updateDataStatus() {
+  const modeText = document.getElementById('storageModeText');
+  const folderRow = document.getElementById('folderInfoRow');
+  const folderName = document.getElementById('folderNameText');
+  const bindBtn = document.getElementById('bindFolderBtn');
+  const unbindBtn = document.getElementById('unbindFolderBtn');
+
+  if (dataDirHandle) {
+    modeText.textContent = '文件夹自动保存';
+    modeText.className = 'status-value file-mode';
+    folderRow.style.display = 'flex';
+    folderName.textContent = dataDirHandle.name + '/ (categories.json, items/*.json, recipes/*.json)';
+    bindBtn.style.display = 'none';
+    unbindBtn.style.display = '';
+  } else {
+    modeText.textContent = pendingHandle ? '本地存储 (文件夹待重新授权)' : '本地存储 (localStorage)';
+    modeText.className = 'status-value local-mode';
+    folderRow.style.display = 'none';
+    bindBtn.style.display = '';
+    bindBtn.textContent = pendingHandle ? '重新授权文件夹' : '绑定文件夹';
+    unbindBtn.style.display = 'none';
+  }
+
+  document.getElementById('customItemCount').textContent = userData.items.length;
+  document.getElementById('customCatCount').textContent = userData.categories.length;
+  document.getElementById('recipeCountText').textContent = userData.recipes.length;
+}
+
+// ============================================================
+//  ICON HELPERS
+// ============================================================
+function getIconHtml(item) {
+  if (!item) return '';
+  if (item.icon) return `<img src="${escAttr(item.icon)}" alt="">`;
+  const c = colorFromString(item.id || item.name || '');
+  const ch = (item.name || item.id || '?').charAt(0);
+  return `<span style="background:${c};width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:700">${escHtml(ch)}</span>`;
+}
+
+function colorFromString(s) {
+  const colors = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#e84393','#00b894','#6c5ce7','#fd79a8','#fdcb6e','#6ab04c','#5352ed','#ff6b6b','#54a0ff'];
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) hash = s.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+}
+
+// ============================================================
+//  COLLAPSED CATEGORIES (UI state, localStorage only)
+// ============================================================
+function loadCollapsedCategories() {
+  try {
+    const data = localStorage.getItem(LS_COLLAPSED);
+    if (data) collapsedCategories = new Set(JSON.parse(data));
+  } catch(e) {}
+}
+
+function saveCollapsedCategories() {
+  try {
+    localStorage.setItem(LS_COLLAPSED, JSON.stringify([...collapsedCategories]));
+  } catch(e) {}
+}
+
+// ============================================================
+//  CATEGORY CRUD
+// ============================================================
+function createCategory(name) {
+  name = name.trim();
+  if (!name) { showToast('分类名不能为空', 'error'); return false; }
+  if (getCategories().includes(name)) { showToast('分类已存在', 'error'); return false; }
+  userData.categories.push(name);
+  saveUserData();
+  renderCategoryMgmt();
+  renderItemList();
+  populateCategorySelects();
+  showToast('分类已创建', 'success');
+  return true;
+}
+
+function deleteCategory(name) {
+  if (name === DEFAULT_CATEGORY) { showToast('原版分类不可删除', 'error'); return; }
+  const db = getItemDB();
+  const count = db.filter(i => i.category === name).length;
+  if (!confirm(`确定删除分类"${name}"吗？\n该分类下有 ${count} 个物品，将被移至"原版"分类。`)) return;
+  // Move items to 原版
+  const itemsInCat = db.filter(i => i.category === name);
+  for (const item of itemsInCat) {
+    setItemField(item.id, 'category', DEFAULT_CATEGORY);
+  }
+  userData.categories = userData.categories.filter(c => c !== name);
+  collapsedCategories.delete(name);
+  saveUserData();
+  saveCollapsedCategories();
+  rebuildItemDB();
+  renderCategoryMgmt();
+  renderItemList();
+  populateCategorySelects();
+  showToast('分类已删除', 'info');
+}
+
+function renameCategory(oldName, newName) {
+  newName = newName.trim();
+  if (!newName) { showToast('分类名不能为空', 'error'); return false; }
+  if (oldName === DEFAULT_CATEGORY) { showToast('原版分类不可重命名', 'error'); return false; }
+  if (newName === oldName) return true;
+  if (getCategories().includes(newName)) { showToast('分类名已存在', 'error'); return false; }
+  const idx = userData.categories.indexOf(oldName);
+  if (idx >= 0) userData.categories[idx] = newName;
+  // Update items
+  const db = getItemDB();
+  const itemsInCat = db.filter(i => i.category === oldName);
+  for (const item of itemsInCat) {
+    setItemField(item.id, 'category', newName);
+  }
+  if (collapsedCategories.has(oldName)) {
+    collapsedCategories.delete(oldName);
+    collapsedCategories.add(newName);
+  }
+  saveUserData();
+  saveCollapsedCategories();
+  rebuildItemDB();
+  renderCategoryMgmt();
+  renderItemList();
+  populateCategorySelects();
+  showToast('分类已重命名', 'success');
+  return true;
+}
+
+function populateCategorySelects() {
+  const cats = getCategories();
+  const selects = [document.getElementById('newItemCategory'), document.getElementById('batchCategory')];
+  selects.forEach(sel => {
+    if (!sel) return;
+    const current = sel.value;
+    sel.innerHTML = cats.map(c => `<option value="${escAttr(c)}">${escHtml(c)}</option>`).join('');
+    if (current && cats.includes(current)) sel.value = current;
+  });
+}
+
+function renderCategoryMgmt() {
+  const list = document.getElementById('categoryMgmtList');
+  if (!list) return;
+  list.innerHTML = '';
+  const cats = getCategories();
+  const db = getItemDB();
+  cats.forEach(cat => {
+    const count = db.filter(i => i.category === cat).length;
+    const isLocked = cat === DEFAULT_CATEGORY;
+    const div = document.createElement('div');
+    div.className = 'cat-mgmt-item';
+    div.dataset.cat = cat;
+    div.innerHTML = `
+      <div style="flex:1;display:flex;align-items:center">
+        <span class="cat-mgmt-name ${isLocked ? 'locked' : ''}">${escHtml(cat)}</span>
+        <input class="cat-mgmt-edit-input" value="${escAttr(cat)}">
+        <span class="cat-mgmt-count">${count} 个物品</span>
+      </div>
+      <div class="cat-mgmt-actions">
+        ${isLocked ? '' : '<button class="btn btn-sm" data-act="rename">改名</button>'}
+        ${isLocked ? '' : '<button class="btn btn-sm btn-danger" data-act="del">删除</button>'}
+      </div>
+    `;
+    const renameBtn = div.querySelector('[data-act="rename"]');
+    if (renameBtn) {
+      renameBtn.addEventListener('click', () => {
+        const nameSpan = div.querySelector('.cat-mgmt-name');
+        const editInput = div.querySelector('.cat-mgmt-edit-input');
+        const countSpan = div.querySelector('.cat-mgmt-count');
+        if (renameBtn.textContent === '改名') {
+          div.classList.add('editing');
+          nameSpan.style.display = 'none';
+          countSpan.style.display = 'none';
+          editInput.style.display = 'block';
+          editInput.focus();
+          editInput.select();
+          renameBtn.textContent = '确定';
+        } else {
+          const newName = editInput.value.trim();
+          if (renameCategory(cat, newName)) {
+            // re-render will happen
+          } else {
+            div.classList.remove('editing');
+            nameSpan.style.display = '';
+            countSpan.style.display = '';
+            editInput.style.display = 'none';
+            renameBtn.textContent = '改名';
+          }
+        }
+      });
+    }
+    const delBtn = div.querySelector('[data-act="del"]');
+    if (delBtn) {
+      delBtn.addEventListener('click', () => deleteCategory(cat));
+    }
+    const editInput = div.querySelector('.cat-mgmt-edit-input');
+    if (editInput) {
+      editInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          if (renameBtn) renameBtn.click();
+        } else if (e.key === 'Escape') {
+          div.classList.remove('editing');
+          div.querySelector('.cat-mgmt-name').style.display = '';
+          div.querySelector('.cat-mgmt-count').style.display = '';
+          editInput.style.display = 'none';
+          if (renameBtn) renameBtn.textContent = '改名';
+        }
+      });
+    }
+    list.appendChild(div);
+  });
+}
+
+// ============================================================
+//  ITEM CRUD (works with new data model)
+// ============================================================
+function setItemField(id, field, value) {
+  const defaultItem = DEFAULT_ITEMS.find(i => i.id === id);
+  const userItemIdx = userData.items.findIndex(i => i.id === id);
+  if (userItemIdx >= 0) {
+    userData.items[userItemIdx][field] = value;
+  } else if (defaultItem) {
+    // Create a user copy with the change
+    const newItem = { ...defaultItem };
+    newItem[field] = value;
+    userData.items.push(newItem);
+  }
+}
+
+function addItem(id, name, icon, category) {
+  if (findItem(id)) {
+    showToast(`物品 ${id} 已存在`, 'error');
+    return false;
+  }
+  // Check if it's a deleted default being re-added
+  const delIdx = userData.deletedDefaults.indexOf(id);
+  if (delIdx >= 0) {
+    userData.deletedDefaults.splice(delIdx, 1);
+    const defaultItem = DEFAULT_ITEMS.find(i => i.id === id);
+    if (defaultItem && (name !== defaultItem.name || icon || category !== DEFAULT_CATEGORY)) {
+      userData.items.push({ id, name: name || id, icon: icon || '', category: category || DEFAULT_CATEGORY });
+    }
+  } else {
+    userData.items.push({ id, name: name || id, icon: icon || '', category: category || DEFAULT_CATEGORY });
+  }
+  saveUserData();
+  rebuildItemDB();
+  renderItemList();
+  renderCategoryMgmt();
+  return true;
+}
+
+function updateItem(originalId, newId, name, icon, category) {
+  const defaultItem = DEFAULT_ITEMS.find(i => i.id === originalId);
+  const userItemIdx = userData.items.findIndex(i => i.id === originalId);
+
+  if (newId !== originalId && findItem(newId)) {
+    showToast(`物品 ${newId} 已存在`, 'error');
+    return false;
+  }
+
+  if (newId !== originalId) {
+    // ID changed: remove old, add new
+    if (userItemIdx >= 0) {
+      userData.items.splice(userItemIdx, 1);
+    }
+    if (defaultItem) {
+      userData.deletedDefaults.push(originalId);
+    }
+    // Check if new ID is a deleted default
+    const newDelIdx = userData.deletedDefaults.indexOf(newId);
+    if (newDelIdx >= 0) {
+      userData.deletedDefaults.splice(newDelIdx, 1);
+    }
+    userData.items.push({ id: newId, name: name || newId, icon: icon || '', category: category || DEFAULT_CATEGORY });
+  } else {
+    // ID unchanged
+    if (defaultItem) {
+      // Editing a default item
+      const isChanged = (name && name !== defaultItem.name) || icon || (category && category !== DEFAULT_CATEGORY);
+      if (isChanged) {
+        if (userItemIdx >= 0) {
+          userData.items[userItemIdx] = { id: newId, name: name || newId, icon: icon || '', category: category || DEFAULT_CATEGORY };
+        } else {
+          userData.items.push({ id: newId, name: name || newId, icon: icon || '', category: category || DEFAULT_CATEGORY });
+        }
+      } else {
+        // Reverted to default
+        if (userItemIdx >= 0) userData.items.splice(userItemIdx, 1);
+      }
+    } else if (userItemIdx >= 0) {
+      // Editing a custom item
+      userData.items[userItemIdx] = { id: newId, name: name || newId, icon: icon || '', category: category || DEFAULT_CATEGORY };
+    }
+  }
+
+  saveUserData();
+  rebuildItemDB();
+  renderItemList();
+  renderCategoryMgmt();
+  updateAllIcons();
+  return true;
+}
+
+function deleteItem(id) {
+  if (!confirm(`确定删除 ${id} 吗？`)) return;
+  userData.items = userData.items.filter(i => i.id !== id);
+  if (DEFAULT_ITEMS.find(i => i.id === id)) {
+    if (!userData.deletedDefaults.includes(id)) {
+      userData.deletedDefaults.push(id);
+    }
+  }
+  saveUserData();
+  rebuildItemDB();
+  renderItemList();
+  renderCategoryMgmt();
+  updateAllIcons();
+  showToast('物品已删除', 'info');
+}
+
+function editItem(id) {
+  openModal(id);
+}
+
+// ============================================================
+//  PINYIN SEARCH
+// ============================================================
+function pinyinMatch(text, query) {
+  if (!text || !query) return false;
+  if (window.pinyinPro && typeof window.pinyinPro.match === 'function') {
+    const result = window.pinyinPro.match(text, query);
+    return result !== null && result.length > 0;
+  }
+  return false;
+}
+
+// ============================================================
+//  RENDER ITEM LIST
+// ============================================================
+function createItemCard(item) {
+  const card = document.createElement('div');
+  card.className = 'item-card';
+  card.draggable = true;
+  card.dataset.itemId = item.id;
+  card.title = '点击编辑 / 拖拽到合成网格';
+  card.innerHTML = `
+    <div class="icon">${getIconHtml(item)}</div>
+    <div class="info">
+      <div class="name">${escHtml(item.name || item.id)}</div>
+      <div class="id-text">${escHtml(item.id)}</div>
+    </div>
+    <button class="delete-item" title="删除">×</button>
+  `;
+  card.addEventListener('dragstart', e => {
+    card.classList.add('dragging');
+    dragData = item.id;
+    gridDragSource = null;
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('text/plain', item.id);
+  });
+  card.addEventListener('dragend', () => {
+    card.classList.remove('dragging');
+    dragData = null;
+    document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+  });
+  card.addEventListener('click', e => {
+    if (e.target.classList.contains('delete-item')) {
+      e.stopPropagation();
+      deleteItem(item.id);
+      return;
+    }
+    editItem(item.id);
+  });
+  card.querySelector('.delete-item').addEventListener('click', e => {
+    e.stopPropagation();
+    deleteItem(item.id);
+  });
+  return card;
+}
+
+function renderItemList() {
+  const list = document.getElementById('itemList');
+  const search = document.getElementById('itemSearch').value.toLowerCase().trim();
+  const db = getItemDB();
+  let filtered = db;
+  if (search) {
+    filtered = db.filter(i => {
+      if (i.id.toLowerCase().includes(search)) return true;
+      if (i.name && i.name.toLowerCase().includes(search)) return true;
+      if (pinyinMatch(i.name || '', search)) return true;
+      return false;
+    });
+  }
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="empty-item-list">${search ? '没有匹配的物品' : '点击 "+ 添加" 按钮添加物品'}</div>`;
+    return;
+  }
+
+  list.innerHTML = '';
+
+  if (search) {
+    filtered.forEach(item => list.appendChild(createItemCard(item)));
+    return;
+  }
+
+  const cats = getCategories();
+  cats.forEach(cat => {
+    const items = filtered.filter(i => i.category === cat);
+    const isCollapsed = collapsedCategories.has(cat);
+    const header = document.createElement('div');
+    header.className = 'category-header';
+    header.innerHTML = `
+      <span class="cat-toggle">${isCollapsed ? '▶' : '▼'}</span>
+      <span class="cat-name">${escHtml(cat)}</span>
+      <span class="cat-count">${items.length}</span>
+    `;
+    header.addEventListener('click', () => {
+      if (collapsedCategories.has(cat)) collapsedCategories.delete(cat);
+      else collapsedCategories.add(cat);
+      saveCollapsedCategories();
+      renderItemList();
+    });
+    header.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      showCategoryContextMenu(e.clientX, e.clientY, cat);
+    });
+    list.appendChild(header);
+    if (!isCollapsed) {
+      items.forEach(item => list.appendChild(createItemCard(item)));
+    }
+  });
+}
+
+// ============================================================
+//  DROP TARGET LOGIC
+// ============================================================
+function setupDropTarget(el, onDrop) {
+  el.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    el.classList.add('drag-over');
+  });
+  el.addEventListener('dragleave', e => {
+    if (e.target === el) el.classList.remove('drag-over');
+  });
+  el.addEventListener('drop', e => {
+    e.preventDefault();
+    el.classList.remove('drag-over');
+    const id = e.dataTransfer.getData('text/plain') || dragData;
+    if (id) onDrop(id);
+  });
+}
+
+// ============================================================
+//  CRAFTING GRID (with drag-to-move support)
+// ============================================================
+function getActiveGrid() {
+  return currentType === 'create-mechanical' ? mechGrid : shapedGrid;
+}
+function getActiveGridSize() {
+  return currentType === 'create-mechanical' ? mechGridSize : { rows: 3, cols: 3 };
+}
+function setActiveGridVal(idx, val) {
+  if (currentType === 'create-mechanical') mechGrid[idx] = val;
+  else shapedGrid[idx] = val;
+}
+
+function buildCraftingGrid() {
+  const container = document.getElementById('craftingGrid');
+  container.innerHTML = '';
+  const size = getActiveGridSize();
+  const total = size.rows * size.cols;
+  // Adjust grid CSS columns
+  container.style.gridTemplateColumns = `repeat(${size.cols}, 1fr)`;
+  container.style.width = (size.cols * 76) + 'px';
+  for (let i = 0; i < total; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'grid-cell';
+    cell.dataset.index = i;
+    cell.innerHTML = `
+      <span class="key-badge"></span>
+      <div class="cell-icon"></div>
+      <div class="cell-text"></div>
+      <button class="clear-btn">×</button>
+    `;
+    const idx = i;
+
+    cell.addEventListener('click', e => {
+      if (e.target.classList.contains('clear-btn')) return;
+      if (gridDragSource !== null) return;
+      const grid = getActiveGrid();
+      const current = grid[idx] ? grid[idx].trim() : '';
+      const newVal = prompt('输入物品ID:', current);
+      if (newVal !== null) {
+        setActiveGridVal(idx, newVal.trim());
+        updateGridDisplay();
+        updatePatternPreview();
+        updateCode();
+      }
+    });
+
+    cell.querySelector('.clear-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      setActiveGridVal(idx, '');
+      updateGridDisplay();
+      updatePatternPreview();
+      updateCode();
+    });
+
+    cell.addEventListener('dragstart', e => {
+      const grid = getActiveGrid();
+      if (!grid[idx] || !grid[idx].trim()) { e.preventDefault(); return; }
+      gridDragSource = idx;
+      dragData = grid[idx];
+      cell.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', grid[idx]);
+    });
+
+    cell.addEventListener('dragend', () => {
+      cell.classList.remove('dragging');
+      gridDragSource = null;
+      document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+    });
+
+    cell.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = gridDragSource !== null ? 'move' : 'copy';
+      cell.classList.add('drag-over');
+    });
+    cell.addEventListener('dragleave', e => {
+      if (e.target === cell) cell.classList.remove('drag-over');
+    });
+    cell.addEventListener('drop', e => {
+      e.preventDefault();
+      cell.classList.remove('drag-over');
+      const grid = getActiveGrid();
+      if (gridDragSource !== null) {
+        if (gridDragSource !== idx) {
+          const temp = grid[gridDragSource];
+          setActiveGridVal(gridDragSource, grid[idx]);
+          setActiveGridVal(idx, temp);
+        }
+        gridDragSource = null;
+      } else {
+        const id = e.dataTransfer.getData('text/plain') || dragData;
+        if (id) setActiveGridVal(idx, id);
+      }
+      updateGridDisplay();
+      updatePatternPreview();
+      updateCode();
+    });
+
+    container.appendChild(cell);
+  }
+}
+
+function updateGridDisplay() {
+  const cells = document.querySelectorAll('#craftingGrid .grid-cell');
+  const itemToKey = getItemKeyMap();
+  const grid = getActiveGrid();
+  cells.forEach((cell, i) => {
+    const val = grid[i] ? grid[i].trim() : '';
+    const iconDiv = cell.querySelector('.cell-icon');
+    const textDiv = cell.querySelector('.cell-text');
+    const badge = cell.querySelector('.key-badge');
+    if (val) {
+      cell.classList.add('filled');
+      cell.draggable = true;
+      const item = findItem(val);
+      if (item) {
+        iconDiv.innerHTML = getIconHtml(item);
+        textDiv.textContent = item.name || val;
+      } else {
+        iconDiv.innerHTML = `<span class="placeholder" style="color:var(--muted)">?</span>`;
+        textDiv.textContent = val;
+      }
+      badge.textContent = itemToKey[val] || '';
+    } else {
+      cell.classList.remove('filled');
+      cell.draggable = false;
+      iconDiv.innerHTML = '';
+      textDiv.textContent = '';
+      badge.textContent = '';
+    }
+  });
+}
+
+function getItemKeyMap() {
+  const map = {};
+  const keys = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  let idx = 0;
+  const grid = getActiveGrid();
+  for (const item of grid) {
+    const v = item ? item.trim() : '';
+    if (v && !map[v]) map[v] = keys[idx++];
+  }
+  return map;
+}
+
+function trimPattern() {
+  const size = getActiveGridSize();
+  const grid = getActiveGrid();
+  let minR = size.rows, maxR = -1, minC = size.cols, maxC = -1;
+  for (let r = 0; r < size.rows; r++) {
+    for (let c = 0; c < size.cols; c++) {
+      const v = grid[r * size.cols + c];
+      if (v && v.trim()) {
+        minR = Math.min(minR, r); maxR = Math.max(maxR, r);
+        minC = Math.min(minC, c); maxC = Math.max(maxC, c);
+      }
+    }
+  }
+  if (maxR < 0) return null;
+  const itemToKey = getItemKeyMap();
+  const pattern = [];
+  for (let r = minR; r <= maxR; r++) {
+    let row = '';
+    for (let c = minC; c <= maxC; c++) {
+      const v = grid[r * size.cols + c];
+      row += (v && v.trim()) ? itemToKey[v.trim()] : ' ';
+    }
+    pattern.push(row);
+  }
+  return { pattern, keys: itemToKey };
+}
+
+function updatePatternPreview() {
+  const el = document.getElementById('patternPreview');
+  const result = trimPattern();
+  if (!result) {
+    el.innerHTML = '<div class="empty">在网格中放入物品以生成配方...</div>';
+    return;
+  }
+  let html = '<div style="color:var(--muted);margin-bottom:4px">Pattern:</div>';
+  result.pattern.forEach(line => {
+    html += `<div class="pattern-line">  '${line}'</div>`;
+  });
+  html += '<div style="color:var(--muted);margin:8px 0 4px">Keys:</div>';
+  for (const [item, key] of Object.entries(result.keys)) {
+    html += `<div class="key-line">  ${key}: '${item}'</div>`;
+  }
+  el.innerHTML = html;
+}
+
+// ============================================================
+//  SHAPELESS
+// ============================================================
+function renderShapelessList() {
+  const list = document.getElementById('shapelessList');
+  list.innerHTML = '';
+  if (shapelessItems.length === 0) {
+    list.innerHTML = '<div class="empty-list" style="padding:12px">点击下方按钮或从左侧拖入物品...</div>';
+    return;
+  }
+  shapelessItems.forEach((item, i) => {
+    const div = document.createElement('div');
+    div.className = 'shapeless-item';
+    const iconHtml = item.trim() ? (() => {
+      const it = findItem(item.trim());
+      return it ? getIconHtml(it) : '';
+    })() : '';
+    div.innerHTML = `
+      <div class="item-icon-small">${iconHtml}</div>
+      <div class="drop-target" data-idx="${i}">
+        <input type="text" value="${escAttr(item)}" placeholder="minecraft:dirt" autocomplete="off">
+      </div>
+      <button class="btn btn-sm btn-danger btn-icon">×</button>
+    `;
+    const input = div.querySelector('input');
+    const dt = div.querySelector('.drop-target');
+    const iconEl = div.querySelector('.item-icon-small');
+    input.addEventListener('input', e => {
+      shapelessItems[i] = e.target.value;
+      const it = findItem(e.target.value.trim());
+      iconEl.innerHTML = it ? getIconHtml(it) : '';
+      updateCode();
+    });
+    div.querySelector('button').addEventListener('click', () => {
+      shapelessItems.splice(i, 1);
+      renderShapelessList();
+      updateCode();
+    });
+    setupDropTarget(dt, id => {
+      input.value = id;
+      shapelessItems[i] = id;
+      const it = findItem(id);
+      iconEl.innerHTML = it ? getIconHtml(it) : '';
+      updateCode();
+    });
+    list.appendChild(div);
+  });
+}
+
+// ============================================================
+//  CREATE MULTI-OUTPUT LIST (milling/crushing/splashing)
+// ============================================================
+function renderCreateMoList() {
+  const list = document.getElementById('createMoOutputList');
+  if (!list) return;
+  list.innerHTML = '';
+  if (createMultiOutputs.length === 0) {
+    createMultiOutputs.push({ item: '', count: 1, chance: 1 });
+  }
+  createMultiOutputs.forEach((o, i) => {
+    const div = document.createElement('div');
+    div.className = 'multi-output-item';
+    const iconHtml = o.item.trim() ? (() => {
+      const it = findItem(o.item.trim());
+      return it ? getIconHtml(it) : '';
+    })() : '';
+    div.innerHTML = `
+      <div class="mo-field" style="flex:1;">
+        <label>物品</label>
+        <div class="drop-target" data-idx="${i}">
+          <span class="drop-icon">${iconHtml}</span>
+          <input type="text" value="${escAttr(o.item)}" placeholder="minecraft:iron_nugget" autocomplete="off">
+        </div>
+      </div>
+      <div class="mo-field">
+        <label>数量</label>
+        <input type="number" class="mo-count" value="${o.count}" min="1" max="64">
+      </div>
+      <div class="mo-field">
+        <label>概率</label>
+        <input type="number" class="mo-chance" value="${o.chance}" step="0.05" min="0" max="1">
+      </div>
+      <button class="btn btn-sm btn-danger btn-icon" style="align-self:flex-end;">×</button>
+    `;
+    const dt = div.querySelector('.drop-target');
+    const iconEl = div.querySelector('.drop-icon');
+    const itemInput = div.querySelector('.drop-target input');
+    const countInput = div.querySelector('.mo-count');
+    const chanceInput = div.querySelector('.mo-chance');
+    itemInput.addEventListener('input', e => {
+      createMultiOutputs[i].item = e.target.value;
+      const it = findItem(e.target.value.trim());
+      iconEl.innerHTML = it ? getIconHtml(it) : '';
+      dt.classList.toggle('has-icon', !!it);
+      updateCode();
+    });
+    countInput.addEventListener('input', e => {
+      createMultiOutputs[i].count = parseInt(e.target.value) || 1;
+      updateCode();
+    });
+    chanceInput.addEventListener('input', e => {
+      createMultiOutputs[i].chance = parseFloat(e.target.value) || 0;
+      updateCode();
+    });
+    div.querySelector('button').addEventListener('click', () => {
+      createMultiOutputs.splice(i, 1);
+      if (createMultiOutputs.length === 0) createMultiOutputs.push({ item: '', count: 1, chance: 1 });
+      renderCreateMoList();
+      updateCode();
+    });
+    setupDropTarget(dt, id => {
+      itemInput.value = id;
+      createMultiOutputs[i].item = id;
+      const it = findItem(id);
+      iconEl.innerHTML = it ? getIconHtml(it) : '';
+      dt.classList.toggle('has-icon', !!it);
+      updateCode();
+    });
+    if (o.item.trim()) {
+      const it = findItem(o.item.trim());
+      if (it) dt.classList.add('has-icon');
+    }
+    list.appendChild(div);
+  });
+}
+
+// ============================================================
+//  CREATE MULTI-INPUT LIST (compacting/mixing)
+// ============================================================
+function renderCreateMiList() {
+  const list = document.getElementById('createMiInputList');
+  if (!list) return;
+  list.innerHTML = '';
+  if (createMultiInputs.length === 0) {
+    createMultiInputs.push('');
+  }
+  createMultiInputs.forEach((item, i) => {
+    const div = document.createElement('div');
+    div.className = 'shapeless-item';
+    const iconHtml = item.trim() ? (() => {
+      const it = findItem(item.trim());
+      return it ? getIconHtml(it) : '';
+    })() : '';
+    div.innerHTML = `
+      <div class="item-icon-small">${iconHtml}</div>
+      <div class="drop-target" data-idx="${i}">
+        <input type="text" value="${escAttr(item)}" placeholder="minecraft:iron_ingot" autocomplete="off">
+      </div>
+      <button class="btn btn-sm btn-danger btn-icon">×</button>
+    `;
+    const input = div.querySelector('input');
+    const dt = div.querySelector('.drop-target');
+    const iconEl = div.querySelector('.item-icon-small');
+    input.addEventListener('input', e => {
+      createMultiInputs[i] = e.target.value;
+      const it = findItem(e.target.value.trim());
+      iconEl.innerHTML = it ? getIconHtml(it) : '';
+      updateCode();
+    });
+    div.querySelector('button').addEventListener('click', () => {
+      createMultiInputs.splice(i, 1);
+      if (createMultiInputs.length === 0) createMultiInputs.push('');
+      renderCreateMiList();
+      updateCode();
+    });
+    setupDropTarget(dt, id => {
+      input.value = id;
+      createMultiInputs[i] = id;
+      const it = findItem(id);
+      iconEl.innerHTML = it ? getIconHtml(it) : '';
+      updateCode();
+    });
+    list.appendChild(div);
+  });
+}
+
+// ============================================================
+//  ICON UPDATES FOR DROP-TARGET INPUTS
+// ============================================================
+function updateAllIcons() {
+  const map = {
+    'outputItemDrop': 'outputItem', 'outputItemIcon': 'outputItem',
+    'smeltingInputDrop': 'smeltingInput', 'smeltingInputIcon': 'smeltingInput',
+    'stonecutterInputDrop': 'stonecutterInput', 'stonecutterInputIcon': 'stonecutterInput',
+    'smithingTemplateDrop': 'smithingTemplate', 'smithingTemplateIcon': 'smithingTemplate',
+    'smithingBaseDrop': 'smithingBase', 'smithingBaseIcon': 'smithingBase',
+    'smithingAdditionDrop': 'smithingAddition', 'smithingAdditionIcon': 'smithingAddition',
+    // Create
+    'createMoInputDrop': 'createMoInput', 'createMoInputIcon': 'createMoInput',
+    'createSimpleInputDrop': 'createSimpleInput', 'createSimpleInputIcon': 'createSimpleInput',
+    'createDeployInputDrop': 'createDeployInput', 'createDeployInputIcon': 'createDeployInput',
+    'createDeployHeldDrop': 'createDeployHeld', 'createDeployHeldIcon': 'createDeployHeld',
+    'createFillItemDrop': 'createFillItem', 'createFillItemIcon': 'createFillItem',
+    'createEmptyInputDrop': 'createEmptyInput', 'createEmptyInputIcon': 'createEmptyInput'
+  };
+  for (const [dropId, inputId] of Object.entries(map)) {
+    if (dropId.includes('Icon')) {
+      const iconEl = document.getElementById(dropId);
+      const input = document.getElementById(inputId);
+      if (!iconEl || !input) continue;
+      const val = input.value.trim();
+      if (val) {
+        const item = findItem(val);
+        if (item) {
+          iconEl.innerHTML = getIconHtml(item);
+          iconEl.parentElement.classList.add('has-icon');
+        } else {
+          iconEl.innerHTML = '';
+          iconEl.parentElement.classList.remove('has-icon');
+        }
+      } else {
+        iconEl.innerHTML = '';
+        iconEl.parentElement.classList.remove('has-icon');
+      }
+      // Update has-value for the drop-target parent
+      const dropEl = iconEl.parentElement;
+      dropEl.classList.toggle('has-value', !!val);
+    }
+  }
+}
+
+// ============================================================
+//  CODE GENERATION
+// ============================================================
+function getOutputStr() {
+  const item = document.getElementById('outputItem').value.trim();
+  const count = parseInt(document.getElementById('outputCount').value) || 1;
+  if (!item) return '';
+  return count > 1 ? `${count}x ${item}` : item;
+}
+
+function getOptionsChain() {
+  let chain = '';
+  const id = document.getElementById('recipeId').value.trim();
+  const group = document.getElementById('recipeGroup').value.trim();
+  if (id) chain += `.id('${id}')`;
+  if (group) chain += `.group('${group}')`;
+  return chain;
+}
+
+function generateCode() {
+  const output = getOutputStr();
+  const noOutputNeeded = ['create-milling','create-crushing','create-splashing','create-cutting','create-compacting'].includes(currentType);
+  if (!output && !noOutputNeeded) return '// 请填写输出物品 ID';
+  const opts = getOptionsChain();
+  switch (currentType) {
+    case 'shaped': return genShaped(output, opts);
+    case 'shapeless': return genShapeless(output, opts);
+    case 'smelting': return genSmelting(output, opts);
+    case 'stonecutting': return genStonecutting(output, opts);
+    case 'smithing': return genSmithing(output, opts);
+    case 'create-milling':
+    case 'create-crushing':
+    case 'create-splashing':
+    case 'create-cutting': return genCreateMultiOutput(output, opts);
+    case 'create-pressing':
+    case 'create-haunting':
+    case 'create-sandpaper': return genCreateSimple(output, opts);
+    case 'create-compacting':
+    case 'create-mixing': return genCreateMultiInput(output, opts);
+    case 'create-deploying': return genCreateDeploying(output, opts);
+    case 'create-mechanical': return genCreateMechanical(output, opts);
+    case 'create-filling': return genCreateFilling(output, opts);
+    case 'create-emptying': return genCreateEmptying(output, opts);
+  }
+  return '';
+}
+
+function genShaped(output, opts) {
+  const result = trimPattern();
+  if (!result) return '// 请在合成网格中至少放入一个物品';
+  let code = `event.shaped('${output}', [\n`;
+  result.pattern.forEach((line, i) => {
+    const comma = i < result.pattern.length - 1 ? ',' : '';
+    code += `    '${line}'${comma}\n`;
+  });
+  code += `], {\n`;
+  const entries = Object.entries(result.keys);
+  entries.forEach(([item, key], i) => {
+    const comma = i < entries.length - 1 ? ',' : '';
+    code += `    ${key}: '${item}'${comma}\n`;
+  });
+  code += `})${opts}`;
+  return code;
+}
+
+function genShapeless(output, opts) {
+  const items = shapelessItems.filter(i => i.trim());
+  if (items.length === 0) return '// 请至少添加一个输入物品';
+  const list = items.map(i => `'${i.trim()}'`).join(', ');
+  return `event.shapeless('${output}', [${list}])${opts}`;
+}
+
+function genSmelting(output, opts) {
+  const type = document.getElementById('smeltingType').value;
+  const input = document.getElementById('smeltingInput').value.trim();
+  if (!input) return '// 请填写输入物品 ID';
+  const xp = parseFloat(document.getElementById('smeltingXP').value) || 0;
+  const time = parseInt(document.getElementById('smeltingTime').value) || 200;
+  let code = `event.${type}('${output}', '${input}')`;
+  if (xp > 0) code += `.xp(${xp})`;
+  if (time !== 200) code += `.cookTime(${time})`;
+  code += opts;
+  return code;
+}
+
+function genStonecutting(output, opts) {
+  const input = document.getElementById('stonecutterInput').value.trim();
+  if (!input) return '// 请填写输入物品 ID';
+  return `event.stonecutting('${output}', '${input}')${opts}`;
+}
+
+function genSmithing(output, opts) {
+  const template = document.getElementById('smithingTemplate').value.trim();
+  const base = document.getElementById('smithingBase').value.trim();
+  const addition = document.getElementById('smithingAddition').value.trim();
+  if (!template || !base || !addition) return '// 请填写模板、基础物品和附加材料';
+  return `event.smithing('${output}', '${template}', '${base}', '${addition}')${opts}`;
+}
+
+// ============================================================
+//  CREATE MOD CODE GENERATION
+// ============================================================
+function genCreateMultiOutput(output, opts) {
+  const input = document.getElementById('createMoInput').value.trim();
+  if (!input) return '// 请填写输入物品 ID';
+  const outputs = createMultiOutputs.filter(o => o.item.trim());
+  if (outputs.length === 0) return '// 请至少添加一个输出物品';
+  const typeMap = { 'create-milling': 'milling', 'create-crushing': 'crushing', 'create-splashing': 'splashing', 'create-cutting': 'cutting' };
+  const fnName = typeMap[currentType];
+  const outputArr = outputs.map(o => {
+    const id = o.item.trim();
+    const count = o.count || 1;
+    const chance = o.chance;
+    let expr;
+    if (count > 1) expr = `Item.of('${id}', ${count})`;
+    else expr = `'${id}'`;
+    if (chance < 1.0) {
+      if (count > 1) expr = `Item.of('${id}', ${count}).withChance(${chance})`;
+      else expr = `Item.of('${id}').withChance(${chance})`;
+    }
+    return expr;
+  });
+  let code = `event.recipes.create.${fnName}([${outputArr.join(', ')}], '${input}')`;
+  const time = parseInt(document.getElementById('createMoTime').value) || 0;
+  if (time > 0) code += `.processingTime(${time})`;
+  code += opts;
+  return code;
+}
+
+function genCreateSimple(output, opts) {
+  const input = document.getElementById('createSimpleInput').value.trim();
+  if (!input) return '// 请填写输入物品 ID';
+  if (!output) return '// 请填写输出物品 ID';
+  const typeMap = { 'create-pressing': 'pressing', 'create-haunting': 'haunting', 'create-cutting': 'cutting', 'create-sandpaper': 'sandpaper_polishing' };
+  const fnName = typeMap[currentType];
+  return `event.recipes.create.${fnName}('${output}', '${input}')${opts}`;
+}
+
+function genCreateMultiInput(output, opts) {
+  const inputs = createMultiInputs.filter(i => i.trim());
+  const typeMap = { 'create-compacting': 'compacting', 'create-mixing': 'mixing' };
+  const fnName = typeMap[currentType];
+
+  // Compacting: support fluid input and fluid output
+  if (currentType === 'create-compacting') {
+    const fluidIn = document.getElementById('createCompactingFluid').value.trim();
+    const fluidInAmt = parseInt(document.getElementById('createCompactingFluidAmount').value) || 1000;
+    const fluidOut = document.getElementById('createCompactingOutFluid').value.trim();
+    const fluidOutAmt = parseInt(document.getElementById('createCompactingOutFluidAmount').value) || 1000;
+    const outItem = document.getElementById('outputItem').value.trim();
+    const outCount = parseInt(document.getElementById('outputCount').value) || 1;
+
+    // Build input array
+    const inputArr = [];
+    inputs.forEach(i => inputArr.push(`'${i.trim()}'`));
+    if (fluidIn) inputArr.push(`Fluid.of('${fluidIn}', ${fluidInAmt})`);
+    if (inputArr.length === 0) return '// 输入物品和流体至少填一个';
+
+    // Build output
+    let outputExpr;
+    if (fluidOut) {
+      const outParts = [];
+      if (outItem) {
+        outParts.push(outCount > 1 ? `Item.of('${outItem}', ${outCount})` : `'${outItem}'`);
+      }
+      outParts.push(`Fluid.of('${fluidOut}', ${fluidOutAmt})`);
+      outputExpr = `[${outParts.join(', ')}]`;
+    } else {
+      if (!outItem) return '// 输出物品和流体至少填一个';
+      outputExpr = outCount > 1 ? `Item.of('${outItem}', ${outCount})` : `'${outItem}'`;
+    }
+
+    let code = `event.recipes.create.${fnName}(${outputExpr}, [${inputArr.join(', ')}])`;
+    const heat = document.getElementById('createHeat').value;
+    if (heat === 'heated') code += `.heated()`;
+    if (heat === 'superheated') code += `.superheated()`;
+    code += opts;
+    return code;
+  }
+
+  // Mixing (no fluid support)
+  if (inputs.length === 0) return '// 请至少添加一个输入物品';
+  if (!output) return '// 请填写输出物品 ID';
+  const inputArr = inputs.map(i => `'${i.trim()}'`).join(', ');
+  let code = `event.recipes.create.${fnName}('${output}', [${inputArr}])`;
+  const heat = document.getElementById('createHeat').value;
+  if (heat === 'heated') code += `.heated()`;
+  if (heat === 'superheated') code += `.superheated()`;
+  code += opts;
+  return code;
+}
+
+function genCreateDeploying(output, opts) {
+  const input = document.getElementById('createDeployInput').value.trim();
+  const held = document.getElementById('createDeployHeld').value.trim();
+  if (!input || !held) return '// 请填写输入物品和手持物品';
+  if (!output) return '// 请填写输出物品 ID';
+  return `event.recipes.create.deploying('${output}', ['${input}', '${held}'])${opts}`;
+}
+
+function genCreateMechanical(output, opts) {
+  const result = trimPattern();
+  if (!result) return '// 请在合成网格中至少放入一个物品';
+  if (!output) return '// 请填写输出物品 ID';
+  let code = `event.recipes.create.mechanical_crafting('${output}', [\n`;
+  result.pattern.forEach((line, i) => {
+    const comma = i < result.pattern.length - 1 ? ',' : '';
+    code += `    '${line}'${comma}\n`;
+  });
+  code += `], {\n`;
+  const entries = Object.entries(result.keys);
+  entries.forEach(([item, key], i) => {
+    const comma = i < entries.length - 1 ? ',' : '';
+    code += `    ${key}: '${item}'${comma}\n`;
+  });
+  code += `})${opts}`;
+  return code;
+}
+
+function genCreateFilling(output, opts) {
+  const item = document.getElementById('createFillItem').value.trim();
+  const fluid = document.getElementById('createFillFluid').value.trim();
+  const amount = parseInt(document.getElementById('createFillAmount').value) || 1000;
+  if (!item || !fluid) return '// 请填写输入物品和流体ID';
+  if (!output) return '// 请填写输出物品 ID';
+  return `event.recipes.create.filling('${output}', ['${item}', Fluid.of('${fluid}', ${amount})])${opts}`;
+}
+
+function genCreateEmptying(output, opts) {
+  const input = document.getElementById('createEmptyInput').value.trim();
+  const fluid = document.getElementById('createEmptyFluid').value.trim();
+  const amount = parseInt(document.getElementById('createEmptyAmount').value) || 1000;
+  if (!input || !fluid) return '// 请填写输入物品和输出流体ID';
+  if (!output) return '// 请填写输出物品 ID';
+  return `event.recipes.create.emptying(['${output}', Fluid.of('${fluid}', ${amount})], '${input}')${opts}`;
+}
+
+function highlightCode(code) {
+  if (code.startsWith('//')) return `<span class="com">${escHtml(code)}</span>`;
+  let html = escHtml(code);
+  html = html.replace(/('[^']*')/g, '<span class="str">$1</span>');
+  html = html.replace(/\b(event|shaped|shapeless|smelting|smoking|blasting|campfireCooking|stonecutting|smithing|milling|crushing|pressing|compacting|mixing|haunting|splashing|cutting|sandpaper_polishing|deploying|mechanical_crafting|filling|emptying|create|Item|Fluid|withChance|heated|superheated|processingTime)\b/g, '<span class="fn">$1</span>');
+  html = html.replace(/\.(\w+)\(/g, '.<span class="fn">$1</span>(');
+  html = html.replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+  html = html.replace(/(\/\/[^\n]*)/g, '<span class="com">$1</span>');
+  return html;
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function updateCode() {
+  const code = generateCode();
+  document.getElementById('codeOutput').innerHTML = highlightCode(code);
+  updateAllIcons();
+}
+
+// ============================================================
+//  RECIPE TYPE SWITCH
+// ============================================================
+function switchType(type) {
+  currentType = type;
+  document.querySelectorAll('.recipe-types button').forEach(b => {
+    b.classList.toggle('active', b.dataset.type === type);
+  });
+  document.querySelectorAll('.editor-section').forEach(s => s.style.display = 'none');
+  // Map types to editor sections
+  const editorMap = {
+    'shaped': 'editor-shaped',
+    'create-mechanical': 'editor-shaped',
+    'create-milling': 'editor-create-multi-output',
+    'create-crushing': 'editor-create-multi-output',
+    'create-splashing': 'editor-create-multi-output',
+    'create-pressing': 'editor-create-simple',
+    'create-haunting': 'editor-create-simple',
+    'create-cutting': 'editor-create-multi-output',
+    'create-sandpaper': 'editor-create-simple',
+    'create-compacting': 'editor-create-multi-input',
+    'create-mixing': 'editor-create-multi-input',
+    'create-deploying': 'editor-create-deploying',
+    'create-filling': 'editor-create-filling',
+    'create-emptying': 'editor-create-emptying',
+  };
+  const ed = document.getElementById(editorMap[type] || ('editor-' + type));
+  if (ed) ed.style.display = 'block';
+  // Show/hide fluid sections for compacting
+  const fluidIn = document.getElementById('createCompactingFluidInput');
+  const fluidOut = document.getElementById('createCompactingFluidOutput');
+  if (fluidIn) fluidIn.style.display = (type === 'create-compacting') ? 'block' : 'none';
+  if (fluidOut) fluidOut.style.display = (type === 'create-compacting') ? 'block' : 'none';
+  // Hide output section for multi-output types (they have their own output list)
+  const isMultiOut = ['create-milling','create-crushing','create-splashing','create-cutting'].includes(type);
+  const outputSection = document.getElementById('outputSection');
+  if (outputSection) outputSection.style.display = isMultiOut ? 'none' : 'block';
+  // Update labels for compacting (all inputs/outputs optional)
+  const miInputTitle = document.querySelector('#editor-create-multi-input .section:first-child .section-title');
+  if (miInputTitle) {
+    miInputTitle.innerHTML = (type === 'create-compacting')
+      ? '输入物品 (可选) <span class="hint">- 可从左侧拖入，与流体输入至少填一个</span>'
+      : '输入物品 <span class="hint">- 可从左侧拖入</span>';
+  }
+  const outTitle = document.getElementById('outputSectionTitle');
+  const outLabel = document.getElementById('outputItemLabel');
+  if (outTitle) {
+    outTitle.innerHTML = (type === 'create-compacting')
+      ? '输出设置 (可选) <span class="hint">- 物品输出与流体输出至少填一个</span>'
+      : '输出设置 <span class="hint">- 可拖入</span>';
+  }
+  if (outLabel) {
+    outLabel.textContent = (type === 'create-compacting') ? '输出物品 (可选)' : '输出物品';
+  }
+  // Update shaped grid title for mechanical crafting
+  const gridTitle = document.getElementById('gridSectionTitle');
+  const mechControls = document.getElementById('mechGridControls');
+  if (gridTitle) {
+    if (type === 'create-mechanical') {
+      gridTitle.innerHTML = '动力合成网格 <span class="hint">- 动力合成器使用的有序合成图案，可自定义网格大小，网格内可拖拽移动/交换</span>';
+      if (mechControls) mechControls.style.display = 'block';
+    } else {
+      gridTitle.innerHTML = '合成网格 <span class="hint">- 从左侧拖入物品，网格内可拖拽移动/交换</span>';
+      if (mechControls) mechControls.style.display = 'none';
+    }
+  }
+  // Rebuild grid when switching to/from mechanical (different grid array & size)
+  buildCraftingGrid();
+  updateGridDisplay();
+  updatePatternPreview();
+  updateCode();
+}
+
+// ============================================================
+//  RECIPE SAVE / LOAD / DELETE
+// ============================================================
+function getCurrentRecipeState() {
+  return {
+    type: currentType,
+    output: document.getElementById('outputItem').value.trim(),
+    count: parseInt(document.getElementById('outputCount').value) || 1,
+    recipeId: document.getElementById('recipeId').value.trim(),
+    recipeGroup: document.getElementById('recipeGroup').value.trim(),
+    grid: [...shapedGrid],
+    mechGrid: [...mechGrid],
+    mechGridSize: { ...mechGridSize },
+    items: [...shapelessItems],
+    smeltingType: document.getElementById('smeltingType').value,
+    smeltingInput: document.getElementById('smeltingInput').value.trim(),
+    smeltingXP: parseFloat(document.getElementById('smeltingXP').value) || 0,
+    smeltingTime: parseInt(document.getElementById('smeltingTime').value) || 200,
+    stonecutterInput: document.getElementById('stonecutterInput').value.trim(),
+    smithingTemplate: document.getElementById('smithingTemplate').value.trim(),
+    smithingBase: document.getElementById('smithingBase').value.trim(),
+    smithingAddition: document.getElementById('smithingAddition').value.trim(),
+    // Create: multi-output
+    createMoInput: document.getElementById('createMoInput').value.trim(),
+    createMoOutputs: createMultiOutputs.map(o => ({ ...o })),
+    createMoTime: parseInt(document.getElementById('createMoTime').value) || 0,
+    // Create: simple
+    createSimpleInput: document.getElementById('createSimpleInput').value.trim(),
+    // Create: multi-input
+    createMiInputs: [...createMultiInputs],
+    createHeat: document.getElementById('createHeat').value,
+    createCompactingFluid: document.getElementById('createCompactingFluid').value.trim(),
+    createCompactingFluidAmount: parseInt(document.getElementById('createCompactingFluidAmount').value) || 1000,
+    createCompactingOutFluid: document.getElementById('createCompactingOutFluid').value.trim(),
+    createCompactingOutFluidAmount: parseInt(document.getElementById('createCompactingOutFluidAmount').value) || 1000,
+    // Create: deploying
+    createDeployInput: document.getElementById('createDeployInput').value.trim(),
+    createDeployHeld: document.getElementById('createDeployHeld').value.trim(),
+    // Create: filling
+    createFillItem: document.getElementById('createFillItem').value.trim(),
+    createFillFluid: document.getElementById('createFillFluid').value.trim(),
+    createFillAmount: parseInt(document.getElementById('createFillAmount').value) || 1000,
+    // Create: emptying
+    createEmptyInput: document.getElementById('createEmptyInput').value.trim(),
+    createEmptyFluid: document.getElementById('createEmptyFluid').value.trim(),
+    createEmptyAmount: parseInt(document.getElementById('createEmptyAmount').value) || 1000,
+    code: generateCode()
+  };
+}
+
+function loadRecipeState(state) {
+  switchType(state.type);
+  document.getElementById('outputItem').value = state.output || '';
+  document.getElementById('outputCount').value = state.count || 1;
+  document.getElementById('recipeId').value = state.recipeId || '';
+  document.getElementById('recipeGroup').value = state.recipeGroup || '';
+  shapedGrid = state.grid ? [...state.grid] : ['','','','','','','','',''];
+  mechGrid = state.mechGrid ? [...state.mechGrid] : ['','','','','','','','',''];
+  mechGridSize = state.mechGridSize ? { ...state.mechGridSize } : { rows: 3, cols: 3 };
+  if (document.getElementById('mechGridRows')) document.getElementById('mechGridRows').value = mechGridSize.rows;
+  if (document.getElementById('mechGridCols')) document.getElementById('mechGridCols').value = mechGridSize.cols;
+  shapelessItems = state.items ? [...state.items] : [];
+  document.getElementById('smeltingType').value = state.smeltingType || 'smelting';
+  document.getElementById('smeltingInput').value = state.smeltingInput || '';
+  document.getElementById('smeltingXP').value = state.smeltingXP || 0;
+  document.getElementById('smeltingTime').value = state.smeltingTime || 200;
+  document.getElementById('stonecutterInput').value = state.stonecutterInput || '';
+  document.getElementById('smithingTemplate').value = state.smithingTemplate || '';
+  document.getElementById('smithingBase').value = state.smithingBase || '';
+  document.getElementById('smithingAddition').value = state.smithingAddition || '';
+  // Create fields
+  document.getElementById('createMoInput').value = state.createMoInput || '';
+  createMultiOutputs = (state.createMoOutputs && state.createMoOutputs.length) ? state.createMoOutputs.map(o => ({ ...o })) : [{ item: '', count: 1, chance: 1 }];
+  document.getElementById('createMoTime').value = state.createMoTime || 0;
+  document.getElementById('createSimpleInput').value = state.createSimpleInput || '';
+  createMultiInputs = (state.createMiInputs && state.createMiInputs.length) ? [...state.createMiInputs] : [''];
+  document.getElementById('createHeat').value = state.createHeat || 'none';
+  document.getElementById('createCompactingFluid').value = state.createCompactingFluid || '';
+  document.getElementById('createCompactingFluidAmount').value = state.createCompactingFluidAmount || 1000;
+  document.getElementById('createCompactingOutFluid').value = state.createCompactingOutFluid || '';
+  document.getElementById('createCompactingOutFluidAmount').value = state.createCompactingOutFluidAmount || 1000;
+  document.getElementById('createDeployInput').value = state.createDeployInput || '';
+  document.getElementById('createDeployHeld').value = state.createDeployHeld || '';
+  document.getElementById('createFillItem').value = state.createFillItem || '';
+  document.getElementById('createFillFluid').value = state.createFillFluid || '';
+  document.getElementById('createFillAmount').value = state.createFillAmount || 1000;
+  document.getElementById('createEmptyInput').value = state.createEmptyInput || '';
+  document.getElementById('createEmptyFluid').value = state.createEmptyFluid || '';
+  document.getElementById('createEmptyAmount').value = state.createEmptyAmount || 1000;
+  updateGridDisplay();
+  updatePatternPreview();
+  renderShapelessList();
+  renderCreateMoList();
+  renderCreateMiList();
+  updateCode();
+}
+
+function saveRecipe() {
+  const state = getCurrentRecipeState();
+  // Multi-output Create recipes don't use standard output field; compacting can use fluid-only output
+  const isMultiOutput = ['create-milling','create-crushing','create-splashing','create-cutting','create-compacting'].includes(state.type);
+  if (!isMultiOutput && !state.output) { showToast('请先填写输出物品 ID', 'error'); return; }
+  if (state.code.startsWith('//')) { showToast('配方不完整，请检查输入', 'error'); return; }
+  userData.recipes.push(state);
+  saveUserData();
+  renderRecipeList();
+  showToast('配方已保存', 'success');
+}
+
+function loadRecipe(index) { loadRecipeState(userData.recipes[index]); showToast('配方已加载', 'info'); }
+function deleteRecipe(index) { userData.recipes.splice(index, 1); saveUserData(); renderRecipeList(); showToast('配方已删除', 'info'); }
+function duplicateRecipe(index) {
+  userData.recipes.push(JSON.parse(JSON.stringify(userData.recipes[index])));
+  saveUserData(); renderRecipeList(); showToast('配方已复制', 'success');
+}
+
+function renderRecipeList() {
+  const list = document.getElementById('recipeList');
+  document.getElementById('recipeCount').textContent = userData.recipes.length;
+  if (userData.recipes.length === 0) { list.innerHTML = '<div class="empty-list">暂无已保存的配方</div>'; return; }
+  list.innerHTML = '';
+  userData.recipes.forEach((r, i) => {
+    const card = document.createElement('div');
+    card.className = 'recipe-card';
+    const typeName = { shaped:'有序', shapeless:'无序', smelting:'熔炼', stonecutting:'切石', smithing:'锻造', 'create-milling':'石磨', 'create-crushing':'粉碎轮', 'create-pressing':'压片', 'create-compacting':'压块', 'create-mixing':'混合', 'create-haunting':'缠魂', 'create-splashing':'洗涤', 'create-cutting':'切割', 'create-sandpaper':'砂纸', 'create-deploying':'机械手', 'create-mechanical':'动力合成', 'create-filling':'注液', 'create-emptying':'分液池' }[r.type] || r.type;
+    const countStr = r.count > 1 ? `${r.count}x ` : '';
+    card.innerHTML = `
+      <div class="info">
+        <div><span class="type-badge type-${r.type}">${typeName}</span></div>
+        <div class="output-text">${countStr}${escHtml(r.output)}</div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-sm" data-act="load" data-idx="${i}">加载</button>
+        <button class="btn btn-sm" data-act="dup" data-idx="${i}">复制</button>
+        <button class="btn btn-sm btn-danger" data-act="del" data-idx="${i}">删除</button>
+      </div>`;
+    list.appendChild(card);
+  });
+  list.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const act = btn.dataset.act, idx = parseInt(btn.dataset.idx);
+      if (act === 'load') loadRecipe(idx);
+      else if (act === 'dup') duplicateRecipe(idx);
+      else if (act === 'del') deleteRecipe(idx);
+    });
+  });
+}
+
+// ============================================================
+//  EXPORT RECIPES (KubeJS code)
+// ============================================================
+function exportAllRecipes() {
+  if (userData.recipes.length === 0) { showToast('没有可导出的配方', 'error'); return ''; }
+  let code = 'ServerEvents.recipes(event => {\n';
+  userData.recipes.forEach((r, i) => {
+    const typeName = { shaped:'有序合成', shapeless:'无序合成', smelting:'熔炼', stonecutting:'切石', smithing:'锻造', 'create-milling':'石磨', 'create-crushing':'粉碎轮', 'create-pressing':'压片', 'create-compacting':'压块', 'create-mixing':'混合', 'create-haunting':'缠魂', 'create-splashing':'洗涤', 'create-cutting':'切割', 'create-sandpaper':'砂纸打磨', 'create-deploying':'机械手', 'create-mechanical':'动力合成', 'create-filling':'注液', 'create-emptying':'分液池' }[r.type] || r.type;
+    const label = r.output || (r.createMoOutputs && r.createMoOutputs.length ? r.createMoOutputs.map(o => o.item).filter(Boolean).join(', ') : '流体输出');
+    code += `\n    // 配方 ${i+1}: ${label} (${typeName})\n`;
+    r.code.split('\n').forEach(line => { code += '    ' + line + '\n'; });
+  });
+  code += '})\n';
+  return code;
+}
+
+function doExport() {
+  const code = exportAllRecipes();
+  if (!code) return;
+  document.getElementById('codeOutput').innerHTML = highlightCode(code);
+  showToast('已切换到全部导出视图', 'info');
+}
+
+function doDownload() {
+  const code = exportAllRecipes();
+  if (!code) return;
+  const blob = new Blob([code], { type: 'text/javascript' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'recipes.js';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('文件已下载', 'success');
+}
+
+// ============================================================
+//  CLEAR
+// ============================================================
+function clearOutput() {
+  document.getElementById('outputItem').value = '';
+  document.getElementById('outputCount').value = 1;
+  updateAllIcons();
+  updateCode();
+  showToast('已清空输出设置', 'info');
+}
+
+function clearCurrent() {
+  shapedGrid = ['','','','','','','','',''];
+  mechGrid = ['','','','','','','','',''];
+  mechGridSize = { rows: 3, cols: 3 };
+  if (document.getElementById('mechGridRows')) document.getElementById('mechGridRows').value = 3;
+  if (document.getElementById('mechGridCols')) document.getElementById('mechGridCols').value = 3;
+  shapelessItems = [];
+  document.getElementById('outputItem').value = '';
+  document.getElementById('outputCount').value = 1;
+  document.getElementById('recipeId').value = '';
+  document.getElementById('recipeGroup').value = '';
+  document.getElementById('smeltingInput').value = '';
+  document.getElementById('smeltingXP').value = 0;
+  document.getElementById('smeltingTime').value = 200;
+  document.getElementById('stonecutterInput').value = '';
+  document.getElementById('smithingTemplate').value = '';
+  document.getElementById('smithingBase').value = '';
+  document.getElementById('smithingAddition').value = '';
+  // Create fields
+  document.getElementById('createMoInput').value = '';
+  createMultiOutputs = [{ item: '', count: 1, chance: 1 }];
+  document.getElementById('createMoTime').value = 0;
+  document.getElementById('createSimpleInput').value = '';
+  createMultiInputs = [''];
+  document.getElementById('createHeat').value = 'none';
+  document.getElementById('createCompactingFluid').value = '';
+  document.getElementById('createCompactingFluidAmount').value = 1000;
+  document.getElementById('createCompactingOutFluid').value = '';
+  document.getElementById('createCompactingOutFluidAmount').value = 1000;
+  document.getElementById('createDeployInput').value = '';
+  document.getElementById('createDeployHeld').value = '';
+  document.getElementById('createFillItem').value = '';
+  document.getElementById('createFillFluid').value = '';
+  document.getElementById('createFillAmount').value = 1000;
+  document.getElementById('createEmptyInput').value = '';
+  document.getElementById('createEmptyFluid').value = '';
+  document.getElementById('createEmptyAmount').value = 1000;
+  updateGridDisplay();
+  updatePatternPreview();
+  renderShapelessList();
+  renderCreateMoList();
+  renderCreateMiList();
+  updateCode();
+  showToast('已清空当前配方', 'info');
+}
+
+function clearAll() {
+  if (userData.recipes.length === 0) { showToast('没有已保存的配方', 'info'); return; }
+  if (confirm('确定要删除所有已保存的配方吗？')) {
+    userData.recipes = [];
+    saveUserData();
+    renderRecipeList();
+    showToast('已清空全部配方', 'info');
+  }
+}
+
+// ============================================================
+//  TOAST
+// ============================================================
+function showToast(msg, type) {
+  const old = document.querySelector('.toast');
+  if (old) old.remove();
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('show'));
+  setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 2200);
+}
+
+// ============================================================
+//  COPY
+// ============================================================
+function copyCode() {
+  const code = document.getElementById('codeOutput').textContent;
+  navigator.clipboard.writeText(code).then(() => showToast('代码已复制', 'success'))
+    .catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = code; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); ta.remove();
+      showToast('代码已复制', 'success');
+    });
+}
+
+// ============================================================
+//  MODAL (Add / Edit Item)
+// ============================================================
+function openModal(itemId, presetCategory) {
+  editingItemId = itemId || null;
+  const modal = document.getElementById('itemModal');
+  modal.classList.add('show');
+  populateCategorySelects();
+
+  if (itemId) {
+    const item = findItem(itemId);
+    if (!item) { editingItemId = null; return; }
+    document.getElementById('modalTitle').textContent = '编辑物品';
+    document.getElementById('newItemId').value = item.id;
+    document.getElementById('newItemName').value = item.name || '';
+    document.getElementById('newItemIconUrl').value = item.icon || '';
+    document.getElementById('newItemCategory').value = item.category || DEFAULT_CATEGORY;
+    document.getElementById('confirmAddItem').textContent = '保存修改';
+    document.querySelectorAll('.modal .tab-row button').forEach(x => x.classList.remove('active'));
+    document.querySelector('.modal .tab-row button[data-tab="single"]').classList.add('active');
+    document.getElementById('modalSingle').style.display = 'block';
+    document.getElementById('modalBatch').style.display = 'none';
+  } else {
+    document.getElementById('modalTitle').textContent = '添加物品';
+    document.getElementById('newItemId').value = '';
+    document.getElementById('newItemName').value = '';
+    document.getElementById('newItemIconUrl').value = '';
+    document.getElementById('newItemCategory').value = presetCategory || DEFAULT_CATEGORY;
+    document.getElementById('confirmAddItem').textContent = '添加';
+  }
+  document.getElementById('iconPreview').innerHTML = '';
+  document.getElementById('batchInput').value = '';
+  document.getElementById('batchCategory').value = presetCategory || DEFAULT_CATEGORY;
+  updateIconPreview();
+}
+
+function closeModal() {
+  document.getElementById('itemModal').classList.remove('show');
+  editingItemId = null;
+}
+
+function updateIconPreview() {
+  const url = document.getElementById('newItemIconUrl').value.trim();
+  const preview = document.getElementById('iconPreview');
+  if (url) {
+    preview.innerHTML = `<img src="${escAttr(url)}" alt="">`;
+  } else {
+    const name = document.getElementById('newItemName').value || document.getElementById('newItemId').value || '?';
+    const c = colorFromString(name);
+    preview.innerHTML = `<span style="background:${c};width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:700">${escHtml(name.charAt(0))}</span>`;
+  }
+}
+
+// ============================================================
+//  ICON FILE DRAG-DROP
+// ============================================================
+function setupIconFileDrop() {
+  const dropZone = document.getElementById('iconDropZone');
+  if (!dropZone) return;
+  let dragCounter = 0;
+
+  dropZone.addEventListener('dragenter', e => {
+    e.preventDefault(); e.stopPropagation();
+    if (e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
+      dragCounter++;
+      dropZone.classList.add('drag-over');
+    }
+  });
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault(); e.stopPropagation();
+    if (e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  });
+  dropZone.addEventListener('dragleave', e => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter <= 0) { dragCounter = 0; dropZone.classList.remove('drag-over'); }
+  });
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation();
+    dragCounter = 0;
+    dropZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { showToast('请拖入图片文件', 'error'); return; }
+    if (file.size > 512 * 1024) { showToast('图片不能超过 512KB', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      document.getElementById('newItemIconUrl').value = reader.result;
+      updateIconPreview();
+      showToast('图片已加载', 'success');
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ============================================================
+//  UPDATE ALL
+// ============================================================
+function updateAll() {
+  updateGridDisplay();
+  updatePatternPreview();
+  renderShapelessList();
+  renderCreateMoList();
+  renderCreateMiList();
+  updateCode();
+}
+
+// ============================================================
+//  INIT
+// ============================================================
+async function init() {
+  // Migrate old data
+  migrateOldData();
+
+  // Load collapsed categories (UI state)
+  loadCollapsedCategories();
+
+  // Try File System Access API first
+  const fsLoaded = await initDataStorage();
+  if (fsLoaded) {
+    await loadUserDataFromFiles();
+  } else {
+    loadUserDataFromLocal();
+  }
+
+  // Build UI
+  rebuildItemDB();
+  buildCraftingGrid();
+  bindEvents();
+  renderItemList();
+  renderRecipeList();
+  renderCreateMoList();
+  renderCreateMiList();
+  populateCategorySelects();
+  updateAll();
+  updateDataStatus();
+}
+
+// ============================================================
+//  BIND EVENTS
+// ============================================================
+function bindEvents() {
+  // Recipe type tabs
+  document.querySelectorAll('.recipe-types button').forEach(b => {
+    b.addEventListener('click', () => switchType(b.dataset.type));
+  });
+
+  // Shapeless add
+  document.getElementById('addShapelessItem').addEventListener('click', () => {
+    shapelessItems.push('');
+    renderShapelessList();
+    updateCode();
+  });
+
+  // Input change -> update code + icons
+  ['outputItem','outputCount','recipeId','recipeGroup',
+   'smeltingType','smeltingInput','smeltingXP','smeltingTime',
+   'stonecutterInput','smithingTemplate','smithingBase','smithingAddition',
+   // Create inputs
+   'createMoInput','createMoTime',
+   'createSimpleInput',
+   'createHeat',
+   'createDeployInput','createDeployHeld',
+   'createFillItem','createFillFluid','createFillAmount',
+   'createEmptyInput','createEmptyFluid','createEmptyAmount',
+   'createCompactingFluid','createCompactingFluidAmount','createCompactingOutFluid','createCompactingOutFluidAmount',
+   'mechGridRows','mechGridCols'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', () => { updateCode(); });
+      if (el.tagName === 'SELECT') el.addEventListener('change', updateCode);
+    }
+  });
+
+  // Create: add buttons
+  document.getElementById('addCreateMoOutput').addEventListener('click', () => {
+    createMultiOutputs.push({ item: '', count: 1, chance: 1 });
+    renderCreateMoList();
+    updateCode();
+  });
+
+  // Mechanical crafting grid size
+  document.getElementById('mechGridApply').addEventListener('click', () => {
+    const rows = Math.max(1, Math.min(9, parseInt(document.getElementById('mechGridRows').value) || 3));
+    const cols = Math.max(1, Math.min(9, parseInt(document.getElementById('mechGridCols').value) || 3));
+    document.getElementById('mechGridRows').value = rows;
+    document.getElementById('mechGridCols').value = cols;
+    // Preserve existing values in their positions
+    const oldSize = mechGridSize;
+    const oldGrid = [...mechGrid];
+    mechGridSize = { rows, cols };
+    const newGrid = new Array(rows * cols).fill('');
+    for (let r = 0; r < Math.min(rows, oldSize.rows); r++) {
+      for (let c = 0; c < Math.min(cols, oldSize.cols); c++) {
+        newGrid[r * cols + c] = oldGrid[r * oldSize.cols + c] || '';
+      }
+    }
+    mechGrid = newGrid;
+    buildCraftingGrid();
+    updateGridDisplay();
+    updatePatternPreview();
+    updateCode();
+    showToast(`网格已调整为 ${rows}×${cols}`, 'info');
+  });
+  document.getElementById('addCreateMiInput').addEventListener('click', () => {
+    createMultiInputs.push('');
+    renderCreateMiList();
+    updateCode();
+  });
+
+  // Save / clear / export
+  document.getElementById('saveRecipe').addEventListener('click', saveRecipe);
+  document.getElementById('clearCurrent').addEventListener('click', clearCurrent);
+  document.getElementById('clearAll').addEventListener('click', clearAll);
+  document.getElementById('clearOutputBtn').addEventListener('click', clearOutput);
+  document.getElementById('copyCode').addEventListener('click', copyCode);
+  document.getElementById('exportAll').addEventListener('click', doExport);
+  document.getElementById('downloadAll').addEventListener('click', doDownload);
+
+  // Item search
+  document.getElementById('itemSearch').addEventListener('input', renderItemList);
+
+  // === Item Modal ===
+  document.getElementById('openAddItem').addEventListener('click', () => openModal());
+  document.getElementById('closeModal').addEventListener('click', closeModal);
+  document.getElementById('closeModal2').addEventListener('click', closeModal);
+  document.getElementById('itemModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('itemModal')) closeModal();
+  });
+
+  // Modal tabs
+  document.querySelectorAll('.modal .tab-row button').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.modal .tab-row button').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      const tab = b.dataset.tab;
+      document.getElementById('modalSingle').style.display = tab === 'single' ? 'block' : 'none';
+      document.getElementById('modalBatch').style.display = tab === 'batch' ? 'block' : 'none';
+    });
+  });
+
+  // Icon URL preview
+  document.getElementById('newItemIconUrl').addEventListener('input', updateIconPreview);
+  document.getElementById('newItemName').addEventListener('input', updateIconPreview);
+  document.getElementById('newItemId').addEventListener('input', updateIconPreview);
+
+  // Icon upload (button)
+  document.getElementById('uploadIconBtn').addEventListener('click', () => {
+    document.getElementById('iconFileInput').click();
+  });
+  document.getElementById('iconFileInput').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 512 * 1024) { showToast('图片不能超过 512KB', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      document.getElementById('newItemIconUrl').value = reader.result;
+      updateIconPreview();
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // Icon file drag-drop
+  setupIconFileDrop();
+
+  // Confirm add/edit single item
+  document.getElementById('confirmAddItem').addEventListener('click', () => {
+    const id = document.getElementById('newItemId').value.trim();
+    const name = document.getElementById('newItemName').value.trim();
+    const icon = document.getElementById('newItemIconUrl').value.trim();
+    const category = document.getElementById('newItemCategory').value;
+    if (!id) { showToast('请填写注册名', 'error'); return; }
+
+    if (editingItemId) {
+      if (updateItem(editingItemId, id, name, icon, category)) {
+        editingItemId = null;
+        closeModal();
+        showToast('物品已更新', 'success');
+      }
+    } else {
+      if (addItem(id, name, icon, category)) {
+        closeModal();
+        showToast('物品已添加', 'success');
+      }
+    }
+  });
+
+  // Confirm batch add
+  document.getElementById('confirmBatchAdd').addEventListener('click', () => {
+    const text = document.getElementById('batchInput').value.trim();
+    if (!text) { showToast('请输入内容', 'error'); return; }
+    const batchCat = document.getElementById('batchCategory').value || DEFAULT_CATEGORY;
+    const lines = text.split('\n').filter(l => l.trim());
+    let added = 0, skipped = 0;
+    lines.forEach(line => {
+      const parts = line.split('|').map(p => p.trim());
+      const id = parts[0];
+      const name = parts[1] || parts[0];
+      if (!id) return;
+      if (findItem(id)) {
+        skipped++;
+      } else {
+        const delIdx = userData.deletedDefaults.indexOf(id);
+        if (delIdx >= 0) userData.deletedDefaults.splice(delIdx, 1);
+        userData.items.push({ id, name, icon: '', category: batchCat });
+        added++;
+      }
+    });
+    saveUserData();
+    rebuildItemDB();
+    renderItemList();
+    renderCategoryMgmt();
+    closeModal();
+    showToast(`已添加 ${added} 个物品${skipped > 0 ? `，跳过 ${skipped} 个重复` : ''}`, 'success');
+  });
+
+  // === Category Management Modal ===
+  document.getElementById('openCategoryMgr').addEventListener('click', () => {
+    renderCategoryMgmt();
+    document.getElementById('categoryModal').classList.add('show');
+  });
+  document.getElementById('closeCategoryModal').addEventListener('click', () => {
+    document.getElementById('categoryModal').classList.remove('show');
+  });
+  document.getElementById('categoryModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('categoryModal')) {
+      document.getElementById('categoryModal').classList.remove('show');
+    }
+  });
+  document.getElementById('addCategoryBtn').addEventListener('click', () => {
+    const name = document.getElementById('newCategoryName').value;
+    if (createCategory(name)) {
+      document.getElementById('newCategoryName').value = '';
+    }
+  });
+  document.getElementById('newCategoryName').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('addCategoryBtn').click();
+  });
+
+  // === Data Management Modal ===
+  document.getElementById('dataMgmt').addEventListener('click', () => {
+    updateDataStatus();
+    populateExportSelects();
+    document.getElementById('dataModal').classList.add('show');
+  });
+  document.getElementById('storageBadge').addEventListener('click', () => {
+    updateDataStatus();
+    populateExportSelects();
+    document.getElementById('dataModal').classList.add('show');
+  });
+  document.getElementById('closeDataModal').addEventListener('click', () => {
+    document.getElementById('dataModal').classList.remove('show');
+  });
+  document.getElementById('dataModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('dataModal')) {
+      document.getElementById('dataModal').classList.remove('show');
+    }
+  });
+  document.getElementById('bindFolderBtn').addEventListener('click', bindDataFolder);
+  document.getElementById('unbindFolderBtn').addEventListener('click', unbindDataFolder);
+
+  // Export buttons
+  document.getElementById('exportCategoryBtn').addEventListener('click', () => {
+    const sel = document.getElementById('exportCategorySelect');
+    if (sel && sel.value) exportCategory(sel.value);
+  });
+  document.getElementById('exportRecipeBtn').addEventListener('click', () => {
+    const sel = document.getElementById('exportRecipeSelect');
+    if (!sel || !sel.options.length) { showToast('暂无配方可导出', 'error'); return; }
+    exportRecipes(sel.value);
+  });
+  document.getElementById('exportAllBtn').addEventListener('click', exportAllData);
+
+  // Import
+  document.getElementById('importFileBtn').addEventListener('click', () => {
+    document.getElementById('importFileInput').click();
+  });
+  document.getElementById('importFileInput').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (file) importUserData(file);
+    e.target.value = '';
+  });
+  document.getElementById('resetDataBtn').addEventListener('click', resetUserData);
+
+  // Setup drop targets for all drop-target elements
+  const dropTargets = [
+    { el: document.getElementById('outputItemDrop'), input: 'outputItem' },
+    { el: document.getElementById('smeltingInputDrop'), input: 'smeltingInput' },
+    { el: document.getElementById('stonecutterInputDrop'), input: 'stonecutterInput' },
+    { el: document.getElementById('smithingTemplateDrop'), input: 'smithingTemplate' },
+    { el: document.getElementById('smithingBaseDrop'), input: 'smithingBase' },
+    { el: document.getElementById('smithingAdditionDrop'), input: 'smithingAddition' },
+    // Create drop targets
+    { el: document.getElementById('createMoInputDrop'), input: 'createMoInput' },
+    { el: document.getElementById('createSimpleInputDrop'), input: 'createSimpleInput' },
+    { el: document.getElementById('createDeployInputDrop'), input: 'createDeployInput' },
+    { el: document.getElementById('createDeployHeldDrop'), input: 'createDeployHeld' },
+    { el: document.getElementById('createFillItemDrop'), input: 'createFillItem' },
+    { el: document.getElementById('createEmptyInputDrop'), input: 'createEmptyInput' },
+  ];
+  dropTargets.forEach(({ el, input }) => {
+    if (!el) return;
+    // Inject clear button if not already present
+    if (!el.querySelector('.input-clear')) {
+      const clr = document.createElement('button');
+      clr.className = 'input-clear';
+      clr.innerHTML = '×';
+      clr.title = '清空';
+      el.appendChild(clr);
+      clr.addEventListener('click', e => {
+        e.stopPropagation();
+        const inp = document.getElementById(input);
+        inp.value = '';
+        el.classList.remove('has-value');
+        updateCode();
+      });
+    }
+    const inp = document.getElementById(input);
+    inp.addEventListener('input', () => {
+      el.classList.toggle('has-value', !!inp.value.trim());
+    });
+    setupDropTarget(el, id => {
+      document.getElementById(input).value = id;
+      el.classList.add('has-value');
+      updateCode();
+    });
+    // Initial state
+    el.classList.toggle('has-value', !!inp.value.trim());
+  });
+}
+
+// ============================================================
+//  CATEGORY CONTEXT MENU
+// ============================================================
+let ctxMenuCat = null;
+
+function showCategoryContextMenu(x, y, catName) {
+  ctxMenuCat = catName;
+  const menu = document.getElementById('catCtxMenu');
+  const isDefault = (catName === DEFAULT_CATEGORY);
+  document.getElementById('ctxRenameCat').style.display = isDefault ? 'none' : 'block';
+  document.getElementById('ctxDeleteCat').style.display = isDefault ? 'none' : 'block';
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+  menu.classList.add('show');
+  // Clamp to viewport
+  requestAnimationFrame(() => {
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) menu.style.left = (window.innerWidth - rect.width - 8) + 'px';
+    if (rect.bottom > window.innerHeight) menu.style.top = (window.innerHeight - rect.height - 8) + 'px';
+  });
+}
+
+function hideCategoryContextMenu() {
+  document.getElementById('catCtxMenu').classList.remove('show');
+  ctxMenuCat = null;
+}
+
+function setupContextMenuHandlers() {
+  document.getElementById('ctxAddItem').addEventListener('click', () => {
+    if (ctxMenuCat) openModal(null, ctxMenuCat);
+    hideCategoryContextMenu();
+  });
+  document.getElementById('ctxRenameCat').addEventListener('click', () => {
+    if (!ctxMenuCat) return;
+    const cat = ctxMenuCat;
+    hideCategoryContextMenu();
+    const newName = prompt('输入新的分类名称:', cat);
+    if (newName && newName.trim()) renameCategory(cat, newName.trim());
+  });
+  document.getElementById('ctxDeleteCat').addEventListener('click', () => {
+    if (!ctxMenuCat) return;
+    const cat = ctxMenuCat;
+    hideCategoryContextMenu();
+    deleteCategory(cat);
+  });
+  // Close on click anywhere
+  document.addEventListener('click', () => hideCategoryContextMenu());
+  document.addEventListener('contextmenu', e => {
+    if (!e.target.closest('#catCtxMenu') && !e.target.closest('.category-header')) {
+      hideCategoryContextMenu();
+    }
+  });
+}
+
+// ============================================================
+//  START
+// ============================================================
+init();
+setupContextMenuHandlers();
+</script>
+</body>
+</html>
